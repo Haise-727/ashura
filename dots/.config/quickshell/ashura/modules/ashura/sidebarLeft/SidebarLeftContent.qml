@@ -1,3 +1,4 @@
+import qs
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
@@ -20,6 +21,30 @@ Item {
         ...((root.animeEnabled && !root.animeCloset) ? [{"icon": "bookmark_heart", "name": Translation.tr("Booru")}] : [])
     ]
     property int tabCount: swipeView.count
+
+    // Ashura: the left edge rail asks for a tab by name (GlobalStates.sidebarLeftTab).
+    // Applied once the sidebar is laid out: a page view that gets a new index
+    // while it has no size moves its tab marker but not its pages.
+    function showTab(name) {
+        const i = root.tabButtonList.findIndex(t => t.name.toLowerCase() === name);
+        if (i < 0) return;
+        tabTimer.index = i;
+        tabTimer.restart();
+    }
+    Timer {
+        id: tabTimer
+        property int index: 0
+        interval: 30
+        onTriggered: {
+            swipeView.setCurrentIndex(index);
+            swipeView.contentItem.positionViewAtIndex(index, ListView.Beginning);
+        }
+    }
+    Connections {
+        target: GlobalStates
+        function onSidebarLeftTabChanged() { if (GlobalStates.sidebarLeftTab) root.showTab(GlobalStates.sidebarLeftTab); }
+        function onSidebarLeftOpenChanged() { if (GlobalStates.sidebarLeftOpen && GlobalStates.sidebarLeftTab) root.showTab(GlobalStates.sidebarLeftTab); }
+    }
 
     function focusActiveItem() {
         swipeView.currentItem.forceActiveFocus()

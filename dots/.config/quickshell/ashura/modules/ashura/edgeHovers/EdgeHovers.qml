@@ -18,7 +18,8 @@ import Quickshell.Wayland
 //                    edge or the panel -> the full right sidebar.
 //                    The same sliders pop up when volume or brightness changes
 //                    (replaces the old on-screen display).
-//   left    hover 1 s, or click -> the left sidebar (translator, booru).
+//   left    rest on it -> a rail of icons (translator, booru, screen
+//           translate); an icon opens the sidebar on that tab. Click -> sidebar.
 //   bottom  hover -> the music card; it stays while the pointer is on it.
 //
 // The strips are on the Top layer, so fullscreen windows cover them.
@@ -36,6 +37,16 @@ Scope {
     // Each edge can be switched off in Settings, Edges.
     readonly property bool slidersShown: AshuraSettings.edgeRight && !GlobalStates.sidebarRightOpen && !GlobalStates.screenLocked
         && (rightEdgeHovered || slidersHovered || rightGrace.running || osdTimer.running)
+
+    // ---- left: the icon rail ----
+    property bool leftEdgeHovered: false
+    property bool railHovered: false
+    property bool railOpen: false                 // set by the dwell, cleared after the grace
+    readonly property bool railShown: AshuraSettings.edgeLeft && root.railOpen
+        && !GlobalStates.sidebarLeftOpen && !GlobalStates.screenLocked
+    Timer { id: railGrace; interval: root.graceMs; onTriggered: if (!root.leftEdgeHovered && !root.railHovered) root.railOpen = false }
+    onLeftEdgeHoveredChanged: if (!leftEdgeHovered) railGrace.restart()
+    onRailHoveredChanged: if (!railHovered) railGrace.restart()
 
     // ---- bottom: music ----
     property bool bottomEdgeHovered: false
@@ -70,6 +81,7 @@ Scope {
         root.rightEdgeHovered = false;
         root.slidersHovered = false;
         osdTimer.stop();
+        root.railOpen = false;
         GlobalStates.sidebarLeftOpen = side === "left";
         GlobalStates.sidebarRightOpen = side === "right";
     }
@@ -200,18 +212,117 @@ Scope {
                 }
             }
 
-            // ---- left
+            // ---- left: a rail of icons joined to the edge (panel style L3).
+            // Resting on the edge pushes it out; an icon opens the sidebar on
+            // that tab. A click on the edge itself opens the sidebar at once.
             Strip {
                 id: leftStrip
                 side: "left"; screenRef: perScreen.modelData; edgeOn: AshuraSettings.edgeLeft
                 onClicked: root.openSidebar("left")
                 // Only a fresh arrival on the edge counts: closing the sidebar
-                // with the pointer still there must not reopen it.
-                onHoveredChanged: if (hovered && !GlobalStates.sidebarLeftOpen) dwell.restart(); else dwell.stop()
+                // with the pointer still there must not bring the rail back.
+                onHoveredChanged: {
+                    root.leftEdgeHovered = hovered;
+                    if (hovered && !GlobalStates.sidebarLeftOpen) dwell.restart(); else dwell.stop();
+                }
                 Timer {
                     id: dwell
                     interval: root.dwellMs
-                    onTriggered: if (leftStrip.hovered) root.openSidebar("left")
+                    onTriggered: if (leftStrip.hovered) root.railOpen = true
+                }
+            }
+            PanelWindow {
+                id: railWin
+                screen: perScreen.modelData
+                anchors.left: true
+                exclusionMode: ExclusionMode.Ignore
+                color: "transparent"
+                WlrLayershell.namespace: "quickshell:edgeRail"
+                WlrLayershell.layer: WlrLayer.Overlay
+                readonly property real fillet: Appearance.rounding.screenRounding
+                implicitWidth: railCard.width
+                implicitHeight: railCard.height + fillet * 2
+                // Always mapped, empty and click-through while closed (as the
+                // music bar), so opening never waits for a new window.
+                visible: true
+                mask: Region { item: (root.railShown || railSlide.slide < 1) ? railHoverRoot : noRailInput }
+                Item { id: noRailInput; width: 0; height: 0 }
+
+                Item {
+                    id: railHoverRoot
+                    anchors.fill: parent
+                    HoverHandler { onHoveredChanged: root.railHovered = hovered }
+
+                    Item {
+                        id: railSlide
+                        property real slide: root.railShown ? 0 : 1      // 0 = out, 1 = tucked away
+                        Behavior on slide { NumberAnimation { duration: 260; easing.type: Easing.OutQuint } }
+                        width: parent.width
+                        height: parent.height
+                        x: -slide * (width + 2)
+
+                        Rectangle {
+                            id: railCard
+                            y: railWin.fillet
+                            width: railCol.implicitWidth + 12
+                            height: railCol.implicitHeight + 12
+                            color: Appearance.colors.colLayer0
+                            topRightRadius: Appearance.rounding.large
+                            bottomRightRadius: Appearance.rounding.large
+
+                            ColumnLayout {
+                                id: railCol
+                                anchors.centerIn: parent
+                                spacing: 4
+                                Repeater {
+                                    model: [
+                                        { icon: "translate", tip: Translation.tr("Translator"), tab: "translator" },
+                                        { icon: "bookmark_heart", tip: Translation.tr("Booru"), tab: "booru" },
+                                        { icon: "screen_search_desktop", tip: Translation.tr("Translate the screen"), tab: "" }
+                                    ]
+                                    delegate: RippleButton {
+                                        required property var modelData
+                                        readonly property bool current: modelData.tab !== "" && GlobalStates.sidebarLeftTab === modelData.tab
+                                        implicitWidth: 40
+                                        implicitHeight: 40
+                                        buttonRadius: Appearance.rounding.normal
+                                        toggled: current
+                                        colBackgroundToggled: Appearance.colors.colPrimary
+                                        colBackgroundToggledHover: Appearance.colors.colPrimaryHover
+                                        onClicked: {
+                                            if (modelData.tab === "") {
+                                                root.railOpen = false;
+                                                Quickshell.execDetached(["hyprctl", "dispatch", 'hl.dsp.global("quickshell:screenTranslate")']);
+                                                return;
+                                            }
+                                            GlobalStates.sidebarLeftTab = modelData.tab;
+                                            root.openSidebar("left");
+                                        }
+                                        contentItem: MaterialSymbol {
+                                            anchors.centerIn: parent
+                                            text: modelData.icon
+                                            iconSize: Appearance.font.pixelSize.huge
+                                            color: current ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer0
+                                        }
+                                        StyledToolTip { text: modelData.tip }
+                                    }
+                                }
+                            }
+                        }
+                        // Joined to the edge above and below, like the music bar.
+                        RoundCorner {
+                            anchors { left: parent.left; bottom: railCard.top }
+                            implicitSize: railWin.fillet
+                            color: Appearance.colors.colLayer0
+                            corner: RoundCorner.CornerEnum.BottomLeft
+                        }
+                        RoundCorner {
+                            anchors { left: parent.left; top: railCard.bottom }
+                            implicitSize: railWin.fillet
+                            color: Appearance.colors.colLayer0
+                            corner: RoundCorner.CornerEnum.TopLeft
+                        }
+                    }
                 }
             }
 

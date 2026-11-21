@@ -46,7 +46,7 @@ Singleton {
             property bool edgeRight: true                        // right edge: volume and brightness sliders
             property bool edgeLeft: true                         // left edge: the left sidebar
             property bool edgeBottom: true                       // bottom edge: the music bar
-            property int edgeLeftDwellMs: 1000                   // hover this long on the left edge to open
+            property int edgeLeftDwellMs: 300                    // rest this long on the left edge for the rail
             property bool edgeOsd: true                          // show the sliders when volume or brightness changes
             property bool clockEnabled: true
             property int clockSize: 96                           // px, the time; the date is ~18% of it

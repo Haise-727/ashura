@@ -34,14 +34,14 @@ ContentPage {
         }
         ConfigSwitch {
             buttonIcon: "left_panel_open"
-            text: Translation.tr("Left edge: the sidebar with the translator and booru")
+            text: Translation.tr("Left edge: an icon rail for the translator, booru and screen translation")
             checked: AshuraSettings.edgeLeft
             onCheckedChanged: AshuraSettings.edgeLeft = checked
         }
         ConfigSpinBox {
             icon: "timer"
             enabled: AshuraSettings.edgeLeft
-            text: Translation.tr("Left edge: hold the pointer there for (ms)")
+            text: Translation.tr("Left edge: rest there this long for the icon rail (ms)")
             value: AshuraSettings.edgeLeftDwellMs
             from: 200
             to: 3000
