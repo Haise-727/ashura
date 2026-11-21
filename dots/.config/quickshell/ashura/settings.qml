@@ -52,6 +52,21 @@ ApplicationWindow {
             component: "modules/settings/MusicConfig.qml"
         },
         {
+            name: Translation.tr("Edges"), // Ashura
+            icon: "border_outer",
+            component: "modules/settings/EdgesConfig.qml"
+        },
+        {
+            name: Translation.tr("Desktop"), // Ashura
+            icon: "desktop_windows",
+            component: "modules/settings/DesktopConfig.qml"
+        },
+        {
+            name: Translation.tr("Cockpits"), // Ashura
+            icon: "rocket_launch",
+            component: "modules/settings/CockpitConfig.qml"
+        },
+        {
             name: Translation.tr("Interface"),
             icon: "bottom_app_bar",
             component: "modules/settings/InterfaceConfig.qml"
