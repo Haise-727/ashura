@@ -27,19 +27,20 @@ Scope {
     id: root
     property bool enabled: true
     readonly property int depth: 3              // px of edge that reacts
-    readonly property int dwellMs: 1000         // left edge: hover this long to open
+    readonly property int dwellMs: AshuraSettings.edgeLeftDwellMs   // left edge: hover this long to open
     readonly property int graceMs: 300          // time to move from edge to panel
 
     // ---- right: sliders ----
     property bool rightEdgeHovered: false
     property bool slidersHovered: false
-    readonly property bool slidersShown: !GlobalStates.sidebarRightOpen && !GlobalStates.screenLocked
+    // Each edge can be switched off in Settings, Edges.
+    readonly property bool slidersShown: AshuraSettings.edgeRight && !GlobalStates.sidebarRightOpen && !GlobalStates.screenLocked
         && (rightEdgeHovered || slidersHovered || rightGrace.running || osdTimer.running)
 
     // ---- bottom: music ----
     property bool bottomEdgeHovered: false
     property bool musicHovered: false
-    readonly property bool musicShown: !GlobalStates.overviewOpen && !GlobalStates.screenLocked
+    readonly property bool musicShown: AshuraSettings.edgeBottom && !GlobalStates.overviewOpen && !GlobalStates.screenLocked
         && (bottomEdgeHovered || musicHovered || bottomGrace.running)
 
     Timer { id: rightGrace; interval: root.graceMs }
@@ -54,7 +55,7 @@ Scope {
     property bool osdArmed: false
     Timer { interval: 2500; running: true; onTriggered: root.osdArmed = true }
     Timer { id: osdTimer; interval: Config.options.osd.timeout + 500 }
-    function osd() { if (root.osdArmed) osdTimer.restart(); }
+    function osd() { if (root.osdArmed && AshuraSettings.edgeOsd) osdTimer.restart(); }
     Connections {
         target: Audio.sink?.audio ?? null
         function onVolumeChanged() { root.osd(); }
@@ -81,6 +82,7 @@ Scope {
         required property string side
         required property var screenRef
         property alias hovered: area.containsMouse
+        property bool edgeOn: true               // this edge's switch in Settings
         signal clicked()
         screen: screenRef
         readonly property bool vertical: side === "left" || side === "right"
@@ -91,7 +93,7 @@ Scope {
         color: "transparent"
         WlrLayershell.namespace: `quickshell:edgeHover:${side}`
         WlrLayershell.layer: WlrLayer.Top
-        visible: root.enabled
+        visible: root.enabled && edgeOn
 
         MouseArea {
             id: area
@@ -122,7 +124,7 @@ Scope {
 
             // ---- right
             Strip {
-                side: "right"; screenRef: perScreen.modelData
+                side: "right"; screenRef: perScreen.modelData; edgeOn: AshuraSettings.edgeRight
                 onHoveredChanged: root.rightEdgeHovered = hovered
                 onClicked: root.openSidebar("right")
             }
@@ -201,7 +203,7 @@ Scope {
             // ---- left
             Strip {
                 id: leftStrip
-                side: "left"; screenRef: perScreen.modelData
+                side: "left"; screenRef: perScreen.modelData; edgeOn: AshuraSettings.edgeLeft
                 onClicked: root.openSidebar("left")
                 // Only a fresh arrival on the edge counts: closing the sidebar
                 // with the pointer still there must not reopen it.
@@ -215,7 +217,7 @@ Scope {
 
             // ---- bottom
             Strip {
-                side: "bottom"; screenRef: perScreen.modelData
+                side: "bottom"; screenRef: perScreen.modelData; edgeOn: AshuraSettings.edgeBottom
                 onHoveredChanged: root.bottomEdgeHovered = hovered
             }
             // The music bar: hangs from the bottom edge, joined to it by
