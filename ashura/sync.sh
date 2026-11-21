@@ -30,6 +30,6 @@ EXCLUDES=(
     --exclude 'monitors.lua'
 )
 rsync -a --itemize-changes "${DRY[@]}" "${EXCLUDES[@]}" "$DOTS/hypr/" "$HOME/.config/hypr/"
-rsync -a --itemize-changes "${DRY[@]}" "$DOTS/quickshell/ashura/" "$HOME/.config/quickshell/ashura/"
+rsync -a --itemize-changes "${DRY[@]}" --exclude ".git" "$DOTS/quickshell/ashura/" "$HOME/.config/quickshell/ashura/"
 [ ${#DRY[@]} -eq 0 ] && hyprctl reload >/dev/null && echo "synced; Hyprland reloaded"
 true
