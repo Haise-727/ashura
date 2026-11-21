@@ -36,7 +36,7 @@ Scope {
     property bool slidersHovered: false
     // Each edge can be switched off in Settings, Edges.
     readonly property bool slidersShown: AshuraSettings.edgeRight && !GlobalStates.sidebarRightOpen && !GlobalStates.screenLocked
-        && (rightEdgeHovered || slidersHovered || rightGrace.running || osdTimer.running)
+        && (rightEdgeHovered || slidersHovered || rightGrace.running)
 
     // ---- left: the icon rail ----
     property bool leftEdgeHovered: false
@@ -61,26 +61,35 @@ Scope {
     onBottomEdgeHoveredChanged: if (!bottomEdgeHovered) bottomGrace.restart()
     onMusicHoveredChanged: if (!musicHovered) bottomGrace.restart()
 
-    // On-screen display: show the sliders for a moment when a value changes.
-    // Not during the first seconds, while devices report their initial values.
+    // On-screen display: a ripple out of the right edge when a value changes
+    // (EdgeRipple). Not during the first seconds, while devices report their
+    // initial values, and not while the dial is out (it already shows them).
     property bool osdArmed: false
+    property string rippleKind: "volume"
+    property int rippleSerial: 0
+    readonly property bool rippleOn: rippleTimer.running
     Timer { interval: 2500; running: true; onTriggered: root.osdArmed = true }
-    Timer { id: osdTimer; interval: Config.options.osd.timeout + 500 }
-    function osd() { if (root.osdArmed && AshuraSettings.edgeOsd) osdTimer.restart(); }
+    Timer { id: rippleTimer; interval: 1600 }
+    function osd(kind) {
+        if (!root.osdArmed || !AshuraSettings.edgeOsd || root.slidersShown || GlobalStates.screenLocked) return;
+        root.rippleKind = kind;
+        root.rippleSerial++;
+        rippleTimer.restart();
+    }
     Connections {
         target: Audio.sink?.audio ?? null
-        function onVolumeChanged() { root.osd(); }
-        function onMutedChanged() { root.osd(); }
+        function onVolumeChanged() { root.osd("volume"); }
+        function onMutedChanged() { root.osd("volume"); }
     }
     Connections {
         target: Brightness.monitors[0] ?? null
-        function onBrightnessChanged() { root.osd(); }
+        function onBrightnessChanged() { root.osd("brightness"); }
     }
 
     function openSidebar(side) {
         root.rightEdgeHovered = false;
         root.slidersHovered = false;
-        osdTimer.stop();
+        rippleTimer.stop();
         root.railOpen = false;
         GlobalStates.sidebarLeftOpen = side === "left";
         GlobalStates.sidebarRightOpen = side === "right";
@@ -95,6 +104,7 @@ Scope {
         required property var screenRef
         property alias hovered: area.containsMouse
         property bool edgeOn: true               // this edge's switch in Settings
+        property bool showHighlight: true        // the growing line; off where a panel already answers the hover
         signal clicked()
         screen: screenRef
         readonly property bool vertical: side === "left" || side === "right"
@@ -121,7 +131,7 @@ Scope {
             height: strip.vertical ? (area.containsMouse ? parent.height * 0.75 : parent.height * 0.3) : 3
             radius: 2
             color: Appearance.colors.colPrimary
-            opacity: area.containsMouse ? 0.9 : 0.0
+            opacity: (strip.showHighlight && area.containsMouse) ? 0.9 : 0.0
             Behavior on width { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
             Behavior on height { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
             Behavior on opacity { NumberAnimation { duration: 200 } }
@@ -165,50 +175,44 @@ Scope {
                     HoverHandler { onHoveredChanged: root.slidersHovered = hovered }
                 }
 
-                // Attached to the edge (caelestia-style): rounded on the inside only.
-                Rectangle {
+                // The arc dial (panel style R2a), sliding out of the edge.
+                Item {
                     id: slidersCard
                     parent: slidersHoverRoot
                     property real slide: root.slidersShown ? 0 : 1      // 0 = in, 1 = out
-                    Behavior on slide { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+                    Behavior on slide { NumberAnimation { duration: 260; easing.type: Easing.OutQuint } }
                     x: slide * (width + 2)
-                    implicitWidth: slidersCol.implicitWidth + 20
-                    implicitHeight: slidersCol.implicitHeight + 28
-                    topLeftRadius: Appearance.rounding.large
-                    bottomLeftRadius: Appearance.rounding.large
-                    topRightRadius: 0
-                    bottomRightRadius: 0
-                    color: Appearance.colors.colLayer0
-
-                    MouseArea {
+                    implicitWidth: dial.implicitWidth
+                    implicitHeight: dial.implicitHeight
+                    ArcDial {
+                        id: dial
                         anchors.fill: parent
+                        screenRef: perScreen.modelData
                         onClicked: root.openSidebar("right")
                     }
+                }
+            }
 
-                    ColumnLayout {
-                        id: slidersCol
-                        anchors.centerIn: parent
-                        spacing: 10
-
-                        FilledSlider {
-                            Layout.alignment: Qt.AlignHCenter
-                            icon: (Audio.sink?.audio.muted ?? false) ? "volume_off"
-                                : value > 0.66 ? "volume_up" : value > 0 ? "volume_down" : "volume_mute"
-                            from: 0
-                            to: Audio.maxVolume
-                            value: Audio.sink?.audio.volume ?? 0
-                            onMoved: if (Audio.sink) Audio.sink.audio.volume = value
-                        }
-                        FilledSlider {
-                            readonly property var monitor: Brightness.getMonitorForScreen(perScreen.modelData)
-                            Layout.alignment: Qt.AlignHCenter
-                            icon: "light_mode"
-                            from: 0
-                            to: 1
-                            value: monitor?.brightness ?? 0
-                            onMoved: monitor?.setBrightness(value)
-                        }
-                    }
+            // Volume or brightness changed from a key: a ripple out of the edge
+            // with the new value (panel style X3). Click-through, never focused.
+            PanelWindow {
+                id: rippleWin
+                screen: perScreen.modelData
+                anchors.right: true
+                exclusionMode: ExclusionMode.Ignore
+                color: "transparent"
+                WlrLayershell.namespace: "quickshell:edgeRipple"
+                WlrLayershell.layer: WlrLayer.Overlay
+                implicitWidth: 170
+                implicitHeight: 340
+                visible: root.rippleOn
+                mask: Region { item: noRippleInput }
+                Item { id: noRippleInput; width: 0; height: 0 }
+                EdgeRipple {
+                    anchors.fill: parent
+                    kind: root.rippleKind
+                    serial: root.rippleSerial
+                    screenRef: perScreen.modelData
                 }
             }
 
@@ -218,6 +222,7 @@ Scope {
             Strip {
                 id: leftStrip
                 side: "left"; screenRef: perScreen.modelData; edgeOn: AshuraSettings.edgeLeft
+                showHighlight: false                     // the rail is the answer to the hover
                 onClicked: root.openSidebar("left")
                 // Only a fresh arrival on the edge counts: closing the sidebar
                 // with the pointer still there must not bring the rail back.
@@ -264,8 +269,8 @@ Scope {
                         Rectangle {
                             id: railCard
                             y: railWin.fillet
-                            width: railCol.implicitWidth + 12
-                            height: railCol.implicitHeight + 12
+                            width: railCol.implicitWidth + 16
+                            height: railCol.implicitHeight + 20
                             color: Appearance.colors.colLayer0
                             topRightRadius: Appearance.rounding.large
                             bottomRightRadius: Appearance.rounding.large
@@ -273,7 +278,7 @@ Scope {
                             ColumnLayout {
                                 id: railCol
                                 anchors.centerIn: parent
-                                spacing: 4
+                                spacing: 8
                                 Repeater {
                                     model: [
                                         { icon: "translate", tip: Translation.tr("Translator"), tab: "translator" },
@@ -283,8 +288,8 @@ Scope {
                                     delegate: RippleButton {
                                         required property var modelData
                                         readonly property bool current: modelData.tab !== "" && GlobalStates.sidebarLeftTab === modelData.tab
-                                        implicitWidth: 40
-                                        implicitHeight: 40
+                                        implicitWidth: 52
+                                        implicitHeight: 52
                                         buttonRadius: Appearance.rounding.normal
                                         toggled: current
                                         colBackgroundToggled: Appearance.colors.colPrimary
@@ -301,7 +306,7 @@ Scope {
                                         contentItem: MaterialSymbol {
                                             anchors.centerIn: parent
                                             text: modelData.icon
-                                            iconSize: Appearance.font.pixelSize.huge
+                                            iconSize: 28
                                             color: current ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer0
                                         }
                                         StyledToolTip { text: modelData.tip }
@@ -395,6 +400,6 @@ Scope {
     IpcHandler {
         target: "edgeHovers"
         function toggle(): void { root.enabled = !root.enabled; }
-        function osd(): void { root.osdArmed = true; root.osd(); }
+        function osd(): void { root.osdArmed = true; root.osd("volume"); }
     }
 }
