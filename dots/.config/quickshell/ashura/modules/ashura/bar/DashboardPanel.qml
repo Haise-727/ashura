@@ -413,28 +413,63 @@ HoverPanel {
 
     // ------------------------------------------------------------ Performance
     // After caelestia's Performance tab: numbers and rings, no graphs.
+    // The battery as a battery: its outline fills to the charge level, with a
+    // bolt in the middle while the charger is in. "Plugged in" covers a full
+    // battery or one held below 100% by the charge limit (UPower then reports
+    // "fully charged" or "pending", not "charging").
     component BatteryBlock: ColumnLayout {
-        spacing: 2
-        RowLayout {
-            spacing: 4
-            MaterialSymbol {
-                text: Battery.isCharging ? "battery_charging_full" : Battery.percentage > 0.8 ? "battery_full"
-                    : Battery.percentage > 0.5 ? "battery_5_bar" : Battery.percentage > 0.2 ? "battery_3_bar" : "battery_1_bar"
-                iconSize: Appearance.font.pixelSize.huge
-                color: Battery.isLowAndNotCharging ? Appearance.colors.colError : Appearance.colors.colPrimary
-            }
-            SubLabel { text: Battery.isCharging ? Translation.tr("Charging") : Battery.isPluggedIn ? Translation.tr("Plugged in") : Translation.tr("Battery") }
+        id: batt
+        readonly property bool onAc: !UPower.onBattery
+        readonly property real level: Battery.percentage
+        readonly property color fill: Battery.isLowAndNotCharging ? Appearance.colors.colError : Appearance.colors.colPrimary
+        spacing: 6
+        SubLabel {
+            text: Battery.isCharging ? Translation.tr("Charging") : batt.onAc ? Translation.tr("Plugged in") : Translation.tr("On battery")
         }
         Item { Layout.fillHeight: true }
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 3
+            Rectangle {   // the body
+                Layout.fillWidth: true
+                Layout.preferredHeight: 58
+                radius: 14
+                color: "transparent"
+                border.width: 2
+                border.color: Appearance.colors.colOutlineVariant
+                Rectangle {   // the charge
+                    anchors { left: parent.left; top: parent.top; bottom: parent.bottom; margins: 5 }
+                    width: Math.max(radius * 2, (parent.width - 10) * batt.level)
+                    radius: 9
+                    color: batt.fill
+                    Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
+                }
+                MaterialSymbol {
+                    anchors.centerIn: parent
+                    visible: batt.onAc
+                    text: "bolt"
+                    fill: 1
+                    iconSize: 30
+                    // Readable on both the fill and the empty part.
+                    color: batt.level > 0.55 ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer2
+                }
+            }
+            Rectangle {   // the terminal nub
+                Layout.preferredWidth: 5
+                Layout.preferredHeight: 20
+                radius: 2
+                color: Appearance.colors.colOutlineVariant
+            }
+        }
         Label {
-            text: `${Math.round(Battery.percentage * 100)}%`
+            text: `${Math.round(batt.level * 100)}%`
             font.pixelSize: 30
             font.family: Appearance.font.family.numbers
             color: Battery.isLowAndNotCharging ? Appearance.colors.colError : Appearance.colors.colOnLayer2
         }
         SubLabel {
             readonly property real secs: Battery.isCharging ? Battery.timeToFull : Battery.timeToEmpty
-            visible: secs > 0
+            visible: secs > 0 && (Battery.isCharging || !batt.onAc)
             text: `${Math.floor(secs / 3600)}h ${Math.floor(secs % 3600 / 60)}m ${Battery.isCharging ? Translation.tr("to full") : Translation.tr("left")}`
         }
     }
@@ -602,6 +637,10 @@ HoverPanel {
                         Label { text: Translation.tr("Storage"); font.pixelSize: Appearance.font.pixelSize.large }
                         SubLabel {
                             text: storageCard.disk ? `${root.bytes(storageCard.disk.used)} / ${root.bytes(storageCard.disk.total)}` : "--"
+                        }
+                        SubLabel {   // what is left on the selected disk
+                            text: storageCard.disk ? Translation.tr("%1 free").arg(root.bytes(storageCard.disk.total - storageCard.disk.used)) : ""
+                            color: Appearance.colors.colPrimary
                         }
                         Flow {
                             Layout.fillWidth: true
