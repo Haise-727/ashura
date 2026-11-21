@@ -31,10 +31,13 @@ Item {
     }
 
     // Placeholder when list is empty
+    // Ashura: kept above the status row (it said "Nothing" right over the
+    // "0 notifications" count); the count already says it, so no text here.
     PagePlaceholder {
         shown: Notifications.list.length === 0
+        anchors.bottomMargin: statusRow.height + 6
         icon: "notifications_active"
-        description: Translation.tr("Nothing")
+        description: ""
         shape: MaterialShape.Shape.Ghostish
         descriptionHorizontalAlignment: Text.AlignHCenter
     }
