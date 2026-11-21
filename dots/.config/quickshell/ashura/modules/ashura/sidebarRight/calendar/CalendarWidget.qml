@@ -6,8 +6,16 @@ import QtQuick
 import QtQuick.Layouts
 
 Item {
+    id: calRoot
     // Layout.topMargin: 10
     anchors.topMargin: 10
+    // Ashura: days with Agenda items get a dot; a click selects a day
+    // (`selectedDate`, YYYY-MM-DD) so the dashboard can show and edit its items.
+    property string selectedDate: Agenda.isoDate(new Date())
+    function isoFor(day) {
+        const d = new Date(viewingDate.getFullYear(), viewingDate.getMonth(), parseInt(day));
+        return Agenda.isoDate(d);
+    }
     property int monthShift: 0
     property var viewingDate: CalendarLayout.getDateInXMonthsTime(monthShift)
     property var calendarLayout: CalendarLayout.getCalendarLayout(viewingDate, monthShift === 0)
@@ -114,6 +122,11 @@ Item {
                     delegate: CalendarDayButton {
                         day: calendarLayout[modelData][index].day
                         isToday: calendarLayout[modelData][index].today
+                        // Only days of the shown month carry marks and select.
+                        readonly property string iso: isToday >= 0 ? calRoot.isoFor(day) : ""
+                        marks: iso ? (Agenda.openCount[iso] || 0) : 0
+                        selected: iso !== "" && iso === calRoot.selectedDate
+                        onClicked: if (iso) calRoot.selectedDate = iso
                     }
                 }
             }

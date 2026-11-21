@@ -97,6 +97,9 @@ Scope {
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.namespace: root.namespace
         WlrLayershell.layer: WlrLayer.Overlay
+        // Keyboard only on demand while open: a click into a text field (the
+        // dashboard's agenda) gets the keys; nothing is grabbed otherwise.
+        WlrLayershell.keyboardFocus: root.shown ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
         implicitWidth: root.contentWidth + Appearance.sizes.elevationMargin * 2 + root.fillet * 2
         implicitHeight: root.band + root.contentHeight + Appearance.sizes.elevationMargin * 2
         margins {

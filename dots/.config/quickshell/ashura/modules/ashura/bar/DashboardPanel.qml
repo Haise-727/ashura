@@ -8,6 +8,7 @@ import qs.modules.ashura.sidebarRight.apps
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Mpris
@@ -129,36 +130,30 @@ HoverPanel {
     }
 
     // ------------------------------------------------------------ Dashboard
+    // The Dashboard tab (panel style DT2): the day ring clock on the left; you,
+    // the month and the selected day's items in the middle; the player on the
+    // right. Calendar marks and items are the shared Agenda list.
     component DashTab: GridLayout {
-        columns: 4
+        id: dash
+        columns: 3
         rowSpacing: 10
         columnSpacing: 10
+        property string selectedDate: Agenda.isoDate(new Date())
 
-        // You
-        // A gif beside you (Haise will pick one; kurukuru until then). The
-        // battery lives in the Performance tab.
+        // The day ring: a clock inside a ring that fills as the day goes.
         Card {
-            Layout.row: 0
-            Layout.column: 2
-            Layout.preferredWidth: 120
-            Layout.preferredHeight: 104
-            clip: true
-            AnimatedImage {
-                anchors.fill: parent
-                anchors.margins: 6
-                fillMode: Image.PreserveAspectFit
-                // Settings, Dashboard: any gif; empty means the bundled one.
-                source: AshuraSettings.dashboardGif !== "" ? `file://${AshuraSettings.dashboardGif}` : Quickshell.shellPath("assets/ashura/dashboard.gif")
-                playing: root.shown && root.tab === 0
-            }
+            Layout.row: 0; Layout.column: 0; Layout.rowSpan: 3
+            Layout.preferredWidth: 250
+            Layout.fillHeight: true
+            DayRing { anchors.centerIn: parent }
         }
 
+        // You, with your picture beside you.
         Card {
-            Layout.row: 0
-            Layout.column: 0
-            Layout.columnSpan: 2
+            Layout.row: 0; Layout.column: 1
             Layout.fillWidth: true
             Layout.preferredHeight: 104
+            clip: true
             Row {
                 anchors.left: parent.left
                 anchors.leftMargin: 14
@@ -211,108 +206,177 @@ HoverPanel {
                     }
                 }
             }
-        }
-
-        // The player, the full height on the right
-        Card {
-            Layout.row: 0
-            Layout.column: 3
-            Layout.rowSpan: 2
-            Layout.preferredWidth: 220
-            Layout.fillHeight: true
-            MiniPlayer { anchors.fill: parent; anchors.margins: 14 }
-        }
-
-        // The date, stacked
-        Card {
-            Layout.row: 1
-            Layout.column: 0
-            Layout.preferredWidth: 104
-            Layout.fillHeight: true
-            ColumnLayout {
-                anchors.centerIn: parent
-                spacing: 2
-                Label {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: Qt.formatDateTime(DateTime.clock.date, "hh")
-                    font.pixelSize: 40
-                    font.family: Appearance.font.family.numbers
-                    color: Appearance.colors.colPrimary
-                }
-                Label {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: "•••"
-                    color: Appearance.colors.colPrimary
-                }
-                Label {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: Qt.formatDateTime(DateTime.clock.date, "mm")
-                    font.pixelSize: 40
-                    font.family: Appearance.font.family.numbers
-                    color: Appearance.colors.colPrimary
-                }
-                SubLabel {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: Qt.formatDateTime(DateTime.clock.date, "ddd, d")
-                }
+            AnimatedImage {
+                anchors { right: parent.right; top: parent.top; bottom: parent.bottom; margins: 8 }
+                width: height
+                fillMode: Image.PreserveAspectFit
+                // Settings, Desktop: any gif; empty means the bundled one.
+                source: AshuraSettings.dashboardGif !== "" ? `file://${AshuraSettings.dashboardGif}` : Quickshell.shellPath("assets/ashura/dashboard.gif")
+                playing: root.shown && root.tab === 0
             }
         }
 
-        // The calendar
+        // The month; days with items carry a dot, a click picks the day below.
         Card {
-            Layout.row: 1
-            Layout.column: 1
+            Layout.row: 1; Layout.column: 1
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
             CalendarWidget {
-                anchors.fill: parent
-                anchors.margins: 6
+                id: cal
+                anchors.centerIn: parent
+                // Shrinks to fit the card rather than losing its header or last row.
+                scale: Math.min(1, (parent.height - 8) / implicitHeight, (parent.width - 8) / width)
+                onSelectedDateChanged: dash.selectedDate = selectedDate
             }
         }
 
-        // CPU / RAM / swap as three bars
+        // The picked day's items: tick, remove, add.
         Card {
-            Layout.row: 1
-            Layout.column: 2
-            Layout.preferredWidth: 120
+            Layout.row: 2; Layout.column: 1
+            Layout.fillWidth: true
+            Layout.preferredHeight: 110
+            AgendaDay { anchors.fill: parent; anchors.margins: 10; date: dash.selectedDate }
+        }
+
+        // The player, the full height on the right.
+        Card {
+            Layout.row: 0; Layout.column: 2; Layout.rowSpan: 3
+            Layout.preferredWidth: 220
             Layout.fillHeight: true
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: 14
-                spacing: 14
-                Repeater {
-                    model: [
-                        { icon: "planner_review", value: ResourceUsage.cpuUsage },
-                        { icon: "memory", value: ResourceUsage.memoryUsedPercentage },
-                        { icon: "swap_horiz", value: ResourceUsage.swapUsedPercentage }
-                    ]
-                    delegate: ColumnLayout {
-                        required property var modelData
-                        Layout.fillHeight: true
-                        spacing: 6
-                        Rectangle {
-                            Layout.alignment: Qt.AlignHCenter
-                            Layout.fillHeight: true
-                            implicitWidth: 10
-                            radius: 5
-                            color: Appearance.colors.colSecondaryContainer
-                            Rectangle {
-                                anchors.bottom: parent.bottom
-                                width: parent.width
-                                radius: parent.radius
-                                height: Math.max(width, parent.height * Math.min(1, modelData.value))
-                                color: Appearance.colors.colPrimary
-                                Behavior on height { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
-                            }
-                        }
-                        MaterialSymbol {
-                            Layout.alignment: Qt.AlignHCenter
-                            text: modelData.icon
-                            iconSize: Appearance.font.pixelSize.normal
-                            color: Appearance.colors.colSubtext
-                        }
+            MiniPlayer { anchors.fill: parent; anchors.margins: 14 }
+        }
+    }
+
+    // A clock inside a ring that fills from the top as the day goes, with a
+    // tick for every hour (longer every six).
+    component DayRing: Item {
+        id: ring
+        width: 214; height: 214
+        readonly property date now: DateTime.clock.date
+        readonly property real dayFrac: (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) / 86400
+        readonly property real r: 88
+        Repeater {
+            model: 24
+            delegate: Item {
+                required property int index
+                anchors.centerIn: parent
+                width: ring.width; height: ring.height
+                rotation: index * 15
+                Rectangle {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: 1
+                    width: 2; height: index % 6 === 0 ? 9 : 5
+                    radius: 1
+                    color: index % 6 === 0 ? Appearance.colors.colOnLayer2 : Appearance.colors.colSubtext
+                    opacity: index % 6 === 0 ? 0.9 : 0.6
+                }
+            }
+        }
+        Shape {
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+            ShapePath {
+                fillColor: "transparent"; strokeColor: Appearance.colors.colSecondaryContainer; strokeWidth: 12
+                PathAngleArc { centerX: ring.width / 2; centerY: ring.height / 2; radiusX: ring.r; radiusY: ring.r; startAngle: 0; sweepAngle: 360 }
+            }
+            ShapePath {
+                fillColor: "transparent"; strokeColor: Appearance.colors.colPrimary; strokeWidth: 12; capStyle: ShapePath.RoundCap
+                PathAngleArc { centerX: ring.width / 2; centerY: ring.height / 2; radiusX: ring.r; radiusY: ring.r; startAngle: -90; sweepAngle: 360 * ring.dayFrac }
+            }
+        }
+        Column {
+            anchors.centerIn: parent
+            spacing: 2
+            Label {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: Qt.formatDateTime(ring.now, AshuraSettings.clock24h ? "HH:mm" : "h:mm")
+                font.pixelSize: 44
+                font.family: Appearance.font.family.numbers
+                font.weight: Font.DemiBold
+            }
+            SubLabel {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: Qt.formatDateTime(ring.now, "dddd, d MMMM")
+            }
+        }
+    }
+
+    // One day's Agenda items, with a field to add one.
+    component AgendaDay: ColumnLayout {
+        id: day
+        property string date
+        readonly property var items: Agenda.itemsOn(day.date)
+        spacing: 4
+        RowLayout {
+            Layout.fillWidth: true
+            Label {
+                text: day.date === Agenda.isoDate(new Date()) ? Translation.tr("Today")
+                    : Qt.formatDate(new Date(day.date + "T12:00:00"), "ddd d MMM")
+                font.weight: Font.DemiBold
+            }
+            SubLabel {
+                Layout.fillWidth: true
+                text: day.items.length ? Translation.tr("%1 item(s)").arg(day.items.length) : Translation.tr("nothing due")
+            }
+        }
+        ListView {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            spacing: 2
+            model: day.items
+            delegate: RowLayout {
+                required property var modelData
+                width: ListView.view.width
+                spacing: 6
+                RippleButton {
+                    implicitWidth: 22; implicitHeight: 22
+                    buttonRadius: 11
+                    onClicked: Agenda.toggle(modelData.id)
+                    contentItem: MaterialSymbol {
+                        anchors.centerIn: parent
+                        text: modelData.done ? "check_circle" : "radio_button_unchecked"
+                        fill: modelData.done ? 1 : 0
+                        iconSize: 18
+                        color: modelData.done ? Appearance.colors.colSubtext : Appearance.colors.colPrimary
                     }
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                    text: modelData.title
+                    font.strikeout: modelData.done
+                    color: modelData.done ? Appearance.colors.colSubtext : Appearance.colors.colOnLayer2
+                }
+                RippleButton {
+                    implicitWidth: 22; implicitHeight: 22
+                    buttonRadius: 11
+                    onClicked: Agenda.remove(modelData.id)
+                    contentItem: MaterialSymbol { anchors.centerIn: parent; text: "close"; iconSize: 16; color: Appearance.colors.colSubtext }
+                }
+            }
+        }
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: 28
+            radius: 14
+            color: Appearance.colors.colLayer1
+            TextInput {
+                id: addField
+                anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
+                verticalAlignment: TextInput.AlignVCenter
+                font.pixelSize: Appearance.font.pixelSize.small
+                font.family: Appearance.font.family.main
+                color: Appearance.colors.colOnLayer1
+                clip: true
+                onAccepted: { Agenda.add(day.date, text); text = ""; }
+                StyledText {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: addField.text === ""
+                    text: Translation.tr("Add a deadline or to-do, Enter to save")
+                    font.pixelSize: Appearance.font.pixelSize.small
+                    color: Appearance.colors.colSubtext
                 }
             }
         }
