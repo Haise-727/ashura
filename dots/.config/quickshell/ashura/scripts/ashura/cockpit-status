@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""Ashura: extra state for the dashboard's Cockpits tab, as JSON on stdout.
+
+For every cockpit devpit knows (`devpit cockpit list --json`):
+  ci      the latest GitHub Actions run on the repo's branch: success, failure,
+          running or none (needs `gh` logged in and a GitHub remote)
+  prs     open pull requests: how many, and the one for this branch if any
+  agents  coding agents running inside the repo (claude, codex, aider, ...),
+          each marked busy when it used CPU in the last half second
+
+GitHub answers are cached for two minutes in ~/.cache/ashura/cockpit-status.json
+so opening the tab never waits on the network more than once in a while.
+"""
+import json, os, re, subprocess, time
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+CACHE = Path.home() / ".cache/ashura/cockpit-status.json"
+GH_TTL = 120
+AGENTS = {"claude", "codex", "aider", "gemini", "opencode", "cursor-agent", "goose", "amp"}
+
+
+def run(cmd, timeout=6, cwd=None):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd)
+        return r.stdout if r.returncode == 0 else ""
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def devpit_list():
+    out = run(["devpit", "cockpit", "list", "--json"]) or run([str(Path.home() / ".local/bin/devpit"), "cockpit", "list", "--json"])
+    try:
+        return json.loads(out).get("cockpits", [])
+    except ValueError:
+        return []
+
+
+def github_slug(path):
+    url = run(["git", "-C", path, "remote", "get-url", "origin"], timeout=3).strip()
+    m = re.search(r"github\.com[:/]([^/]+/[^/]+?)(?:\.git)?$", url)
+    return m.group(1) if m else None
+
+
+def github_state(path, branch):
+    slug = github_slug(path)
+    if not slug:
+        return {"ci": {"state": "none"}, "prs": {"open": 0, "mine": None}}
+    ci = {"state": "none"}
+    runs = run(["gh", "run", "list", "-R", slug, "-b", branch, "-L", "1", "--json", "status,conclusion,workflowName"])
+    try:
+        r = (json.loads(runs) or [None])[0]
+        if r:
+            state = "running" if r["status"] != "completed" else ("success" if r["conclusion"] == "success" else "failure")
+            ci = {"state": state, "name": r.get("workflowName", "")}
+    except (ValueError, KeyError, IndexError):
+        pass
+    prs = {"open": 0, "mine": None}
+    raw = run(["gh", "pr", "list", "-R", slug, "--json", "number,title,isDraft,headRefName", "-L", "50"])
+    try:
+        lst = json.loads(raw) if raw else []
+        prs["open"] = len(lst)
+        for p in lst:
+            if p["headRefName"] == branch:
+                prs["mine"] = {"number": p["number"], "title": p["title"], "draft": p["isDraft"]}
+    except (ValueError, KeyError):
+        pass
+    return {"ci": ci, "prs": prs}
+
+
+def cpu_ticks(pid):
+    try:
+        f = open(f"/proc/{pid}/stat").read().rsplit(")", 1)[1].split()
+        return int(f[11]) + int(f[12])
+    except (OSError, IndexError, ValueError):
+        return 0
+
+
+def agents_by_repo(paths):
+    """pid list of agent processes whose working directory is inside a repo."""
+    found = {p: [] for p in paths}
+    for d in os.listdir("/proc"):
+        if not d.isdigit():
+            continue
+        try:
+            comm = open(f"/proc/{d}/comm").read().strip()
+            cmd = open(f"/proc/{d}/cmdline", "rb").read().split(b"\0")
+            name = comm if comm in AGENTS else None
+            if not name and comm in ("node", "bun", "python3", "python"):
+                for part in cmd[1:3]:
+                    base = os.path.basename(part.decode(errors="ignore"))
+                    if base in AGENTS:
+                        name = base
+            if not name:
+                continue
+            cwd = os.readlink(f"/proc/{d}/cwd")
+        except OSError:
+            continue
+        for p in paths:
+            if cwd == p or cwd.startswith(p.rstrip("/") + "/"):
+                found[p].append((name, int(d)))
+    # Busy: CPU used over half a second.
+    before = {pid: cpu_ticks(pid) for lst in found.values() for _, pid in lst}
+    if before:
+        time.sleep(0.5)
+    out = {}
+    for p, lst in found.items():
+        seen = {}
+        for name, pid in lst:
+            busy = cpu_ticks(pid) - before.get(pid, 0) > 2
+            seen[name] = seen.get(name, False) or busy
+        out[p] = [{"name": n, "busy": b} for n, b in seen.items()]
+    return out
+
+
+def main():
+    cockpits = devpit_list()
+    try:
+        cache = json.loads(CACHE.read_text())
+    except (OSError, ValueError):
+        cache = {}
+    now = time.time()
+    stale = [c for c in cockpits if c.get("exists") and now - cache.get(c["id"], {}).get("at", 0) > GH_TTL]
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        results = list(ex.map(lambda c: github_state(c["path"], (c.get("git") or {}).get("branch", "")), stale))
+    for c, res in zip(stale, results):
+        cache[c["id"]] = dict(res, at=now)
+    CACHE.parent.mkdir(parents=True, exist_ok=True)
+    CACHE.write_text(json.dumps(cache))
+    agents = agents_by_repo([c["path"] for c in cockpits if c.get("exists")])
+    out = {}
+    for c in cockpits:
+        g = cache.get(c["id"], {})
+        out[c["id"]] = {"ci": g.get("ci", {"state": "none"}), "prs": g.get("prs", {"open": 0, "mine": None}),
+                        "agents": agents.get(c["path"], [])}
+    print(json.dumps({"repos": out}))
+
+
+if __name__ == "__main__":
+    main()

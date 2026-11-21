@@ -782,6 +782,43 @@ HoverPanel {
     }
 
     // ------------------------------------------------------------ Cockpits
+    // A small status chip for the Cockpits tab; `pulse` blinks its icon.
+    component CockpitChip: Rectangle {
+        id: chip
+        property string icon
+        property string label
+        property color tint: Appearance.colors.colLayer1
+        property color ink: Appearance.colors.colOnLayer1
+        property bool pulse: false
+        implicitWidth: chipRow.implicitWidth + 14
+        implicitHeight: 24
+        radius: 12
+        color: chip.tint
+        Row {
+            id: chipRow
+            anchors.centerIn: parent
+            spacing: 4
+            MaterialSymbol {
+                anchors.verticalCenter: parent.verticalCenter
+                text: chip.icon
+                iconSize: 14
+                color: chip.ink
+                SequentialAnimation on opacity {
+                    running: chip.pulse
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.35; duration: 600 }
+                    NumberAnimation { to: 1; duration: 600 }
+                }
+            }
+            StyledText {
+                anchors.verticalCenter: parent.verticalCenter
+                text: chip.label
+                font.pixelSize: Appearance.font.pixelSize.smaller
+                color: chip.ink
+            }
+        }
+    }
+
     component CockpitsTab: ColumnLayout {
         spacing: 10
 
@@ -809,73 +846,165 @@ HoverPanel {
                         anchors.centerIn: parent
                         spacing: 6
                         MaterialSymbol { text: "add"; iconSize: Appearance.font.pixelSize.larger; color: Appearance.colors.colOnSecondaryContainer }
-                        StyledText { text: Translation.tr("Pick or add"); color: Appearance.colors.colOnSecondaryContainer }
+                        StyledText { text: Translation.tr("Add a repo"); color: Appearance.colors.colOnSecondaryContainer }
                     }
                 }
             }
         }
 
+        // CI, pull requests and running agents per repo (scripts/ashura/cockpit-status),
+        // polled while this tab is open; GitHub answers are cached for two minutes.
+        Process {
+            id: statusProc
+            property var data: ({})
+            command: [Quickshell.shellPath("scripts/ashura/cockpit-status")]
+            stdout: StdioCollector { onStreamFinished: { try { statusProc.data = JSON.parse(text).repos ?? {}; } catch (e) {} } }
+        }
+        Timer {
+            interval: 20000; repeat: true; triggeredOnStart: true
+            running: root.shown && root.tab === 3
+            onTriggered: if (!statusProc.running) statusProc.running = true
+        }
+
+        // Panel style C3: a row per repo with a small git line (history, the
+        // remote's marker, your unpushed commits past it) and chips for changed
+        // files, CI, pull requests and agents. Hover lifts the row, spreads the
+        // line and brings in the actions.
         StyledListView {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            spacing: 6
+            spacing: 8
             model: Cockpit.cockpits
-            delegate: Card {
+            delegate: Item {
                 id: row
                 required property var modelData
                 readonly property bool onStage: Cockpit.current === modelData.id
                 readonly property int windows: Cockpit.repos[modelData.id]?.windows ?? 0
+                readonly property var git: modelData.git ?? {}
+                readonly property var extra: statusProc.data[modelData.id] ?? ({})
+                readonly property bool hot: rowHover.containsMouse || goBtn.hovered || closeBtn.hovered
                 width: ListView.view.width
-                height: 56
-                color: onStage ? Appearance.colors.colSecondaryContainer : Appearance.colors.colLayer2
-                MaterialSymbol {
-                    id: rowIcon
-                    anchors.left: parent.left
-                    anchors.leftMargin: 14
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: row.onStage ? "rocket_launch" : "folder"
-                    iconSize: Appearance.font.pixelSize.larger
-                    color: Appearance.colors.colPrimary
-                }
-                Column {
-                    anchors.left: rowIcon.right
-                    anchors.leftMargin: 12
-                    anchors.right: rowButtons.left
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    Label { width: parent.width; elide: Text.ElideRight; text: row.modelData.name }
-                    SubLabel {
-                        width: parent.width
-                        elide: Text.ElideRight
-                        text: {
-                            const g = row.modelData.git ?? {};
-                            const bits = [g.branch ?? ""];
-                            if (g.dirty) bits.push(`${g.dirty} changed`);
-                            if (g.ahead) bits.push(`${g.ahead} unpushed`);
-                            bits.push(row.windows ? `${row.windows} window${row.windows > 1 ? "s" : ""}` : "closed");
-                            return bits.filter(b => b).join(" · ");
+                height: 64
+
+                Card {
+                    id: rowCard
+                    anchors.fill: parent
+                    anchors.topMargin: row.hot ? 0 : 3
+                    anchors.bottomMargin: row.hot ? 3 : 0
+                    color: row.onStage ? Appearance.colors.colSecondaryContainer
+                        : row.hot ? Appearance.colors.colLayer2Hover : Appearance.colors.colLayer2
+                    Behavior on anchors.topMargin { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                    Behavior on anchors.bottomMargin { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                    Behavior on color { ColorAnimation { duration: 160 } }
+
+                    MouseArea { id: rowHover; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
+
+                    Column {
+                        id: nameCol
+                        anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
+                        width: 130
+                        Label { width: parent.width; elide: Text.ElideRight; text: row.modelData.name; font.weight: Font.DemiBold }
+                        SubLabel { width: parent.width; elide: Text.ElideRight; text: row.git.branch ?? ""; font.family: Appearance.font.family.monospace }
+                    }
+
+                    // The git line.
+                    Item {
+                        id: gitLine
+                        anchors { left: nameCol.right; leftMargin: 8; verticalCenter: parent.verticalCenter }
+                        width: 222; height: 30
+                        property real gap: row.hot ? 15 : 11
+                        Behavior on gap { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+                        readonly property real originX: 8 + gap * 5
+                        Rectangle { y: 14; x: 2; width: gitLine.originX + gitLine.gap * Math.min(6, row.git.ahead ?? 0) + 8; height: 2; radius: 1; color: Appearance.colors.colOutlineVariant }
+                        Repeater {   // history
+                            model: 5
+                            delegate: Rectangle { required property int index; x: 8 + index * gitLine.gap - 4; y: 11; width: 8; height: 8; radius: 4; color: Appearance.colors.colSubtext }
+                        }
+                        Rectangle {   // the remote's marker
+                            x: gitLine.originX; y: 5; width: 2; height: 20; radius: 1; color: Appearance.colors.colOnLayer2
+                            StyledText { anchors { top: parent.bottom; horizontalCenter: parent.horizontalCenter } text: "origin"; font.pixelSize: 9; color: Appearance.colors.colSubtext }
+                        }
+                        Repeater {   // unpushed
+                            model: Math.min(6, row.git.ahead ?? 0)
+                            delegate: Rectangle {
+                                required property int index
+                                x: gitLine.originX + gitLine.gap * (index + 1) - 5; y: 10; width: 10; height: 10; radius: 5
+                                color: Appearance.colors.colPrimary
+                            }
+                        }
+                        StyledText {
+                            visible: (row.git.ahead ?? 0) > 6
+                            x: gitLine.originX + gitLine.gap * 7; anchors.verticalCenter: parent.verticalCenter
+                            text: `+${(row.git.ahead ?? 0) - 6}`
+                            font.pixelSize: Appearance.font.pixelSize.smaller; color: Appearance.colors.colPrimary
                         }
                     }
-                }
-                Row {
-                    id: rowButtons
-                    anchors.right: parent.right
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 4
-                    RippleButton {
-                        implicitWidth: 36; implicitHeight: 36; buttonRadius: 18
-                        onClicked: { root.pinned = false; row.onStage ? Cockpit.toggle() : Cockpit.open(row.modelData.id); }
-                        contentItem: MaterialSymbol { anchors.centerIn: parent; text: row.onStage ? "swap_horiz" : "play_arrow"; iconSize: Appearance.font.pixelSize.larger; color: Appearance.colors.colOnLayer2 }
-                        StyledToolTip { text: row.onStage ? Translation.tr("Go in / out") : Translation.tr("Open in the cockpit") }
+
+                    // Chips: changed files, CI, pull requests, agents (CockpitChip).
+                    Row {
+                        anchors { left: gitLine.right; leftMargin: 10; right: actions.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                        spacing: 5
+                        clip: true
+                        CockpitChip {
+                            visible: (row.git.dirty ?? 0) + (row.git.untracked ?? 0) > 0
+                            icon: "edit_note"; label: `${(row.git.dirty ?? 0) + (row.git.untracked ?? 0)}`
+                            tint: "#e2b25c"; ink: "#2a1d08"
+                        }
+                        CockpitChip {
+                            readonly property string st: row.extra.ci?.state ?? "none"
+                            visible: st !== "none"
+                            icon: st === "success" ? "check_circle" : st === "failure" ? "cancel" : "pending"
+                            label: st === "success" ? "CI" : st === "failure" ? Translation.tr("CI failed") : Translation.tr("CI running")
+                            tint: st === "success" ? "#7fcf8a" : st === "failure" ? Appearance.colors.colError : Appearance.colors.colLayer1
+                            ink: st === "success" ? "#0f2412" : st === "failure" ? Appearance.colors.colOnError : Appearance.colors.colOnLayer1
+                            pulse: st === "running"
+                        }
+                        CockpitChip {
+                            readonly property var prs: row.extra.prs ?? ({ open: 0 })
+                            visible: prs.open > 0
+                            icon: "merge"
+                            label: prs.mine ? `#${prs.mine.number}${prs.mine.draft ? " draft" : ""}` : Translation.tr("%1 PR").arg(prs.open)
+                        }
+                        Repeater {
+                            model: row.extra.agents ?? []
+                            delegate: CockpitChip {
+                                required property var modelData
+                                icon: "smart_toy"
+                                label: `${modelData.name} · ${modelData.busy ? Translation.tr("working") : Translation.tr("idle")}`
+                                tint: modelData.busy ? Appearance.colors.colPrimary : Appearance.colors.colLayer1
+                                ink: modelData.busy ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer1
+                                pulse: modelData.busy
+                            }
+                        }
+                        CockpitChip {
+                            visible: row.windows > 0
+                            icon: "select_window"; label: `${row.windows}`
+                        }
                     }
-                    RippleButton {
-                        visible: row.windows > 0
-                        implicitWidth: 36; implicitHeight: 36; buttonRadius: 18
-                        onClicked: Cockpit.close(row.modelData.id)
-                        contentItem: MaterialSymbol { anchors.centerIn: parent; text: "close"; iconSize: Appearance.font.pixelSize.larger; color: Appearance.colors.colOnLayer2 }
-                        StyledToolTip { text: Translation.tr("Close this repo's windows") }
+
+                    // Actions, in on hover (and always for the repo on stage).
+                    Row {
+                        id: actions
+                        anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                        spacing: 4
+                        opacity: row.hot || row.onStage ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 150 } }
+                        RippleButton {
+                            id: goBtn
+                            implicitWidth: 36; implicitHeight: 36; buttonRadius: 18
+                            onClicked: { root.pinned = false; row.onStage ? Cockpit.toggle() : Cockpit.open(row.modelData.id); }
+                            contentItem: MaterialSymbol { anchors.centerIn: parent; text: row.onStage ? "swap_horiz" : "play_arrow"; iconSize: Appearance.font.pixelSize.larger; color: Appearance.colors.colOnLayer2 }
+                            StyledToolTip { text: row.onStage ? Translation.tr("Go in / out") : Translation.tr("Open in the cockpit") }
+                        }
+                        RippleButton {
+                            id: closeBtn
+                            visible: row.windows > 0
+                            implicitWidth: 36; implicitHeight: 36; buttonRadius: 18
+                            onClicked: Cockpit.close(row.modelData.id)
+                            contentItem: MaterialSymbol { anchors.centerIn: parent; text: "close"; iconSize: Appearance.font.pixelSize.larger; color: Appearance.colors.colOnLayer2 }
+                            StyledToolTip { text: Translation.tr("Close this repo's windows") }
+                        }
                     }
                 }
             }
@@ -883,7 +1012,7 @@ HoverPanel {
                 shown: Cockpit.cockpits.length === 0
                 icon: "rocket_launch"
                 title: Translation.tr("No cockpits yet")
-                description: Translation.tr("Super+Space, then pick a repo to add")
+                description: Translation.tr("Add a repo with the button above")
             }
         }
     }
