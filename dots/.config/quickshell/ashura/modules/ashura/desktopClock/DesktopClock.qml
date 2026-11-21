@@ -21,8 +21,10 @@ import Quickshell.Io
 Item {
     id: root
     anchors.fill: parent
-    property int size: 96
-    property string anchor: "bottom-right"
+    property int size: AshuraSettings.clockSize          // Settings, Desktop clock
+    property string measuredAnchor: "bottom-right"
+    // "auto" follows the wallpaper's quietest corner; any other value pins a corner.
+    readonly property string anchor: AshuraSettings.clockPlacement === "auto" ? measuredAnchor : AshuraSettings.clockPlacement
     property real luma: 0.2
     readonly property string wallpaper: Config.options.background.wallpaperPath
     readonly property bool isVideo: /\.(mp4|webm|mkv|mov|avi)$/i.test(wallpaper)
@@ -48,9 +50,9 @@ Item {
     }
 
     function measure() {
-        if (!root.imageToMeasure) { root.anchor = "bottom-right"; root.luma = 0.2; return; }
+        if (!root.imageToMeasure) { root.measuredAnchor = "bottom-right"; root.luma = 0.2; return; }
         const hit = cache.positions[root.imageToMeasure];
-        if (hit) { root.luma = hit.luma; root.anchor = hit.anchor; return; }
+        if (hit) { root.luma = hit.luma; root.measuredAnchor = hit.anchor; return; }
         quiet.running = false;
         quiet.measuring = root.imageToMeasure;
         quiet.command = [`${(Quickshell.env("ASHURA_VIRTUAL_ENV") || `${Quickshell.env("HOME")}/.local/state/quickshell/.venv`)}/bin/python`,
@@ -66,7 +68,7 @@ Item {
                 const p = text.trim().split(" ");
                 if (p.length < 6) return;
                 root.luma = parseFloat(p[5]);
-                root.anchor = p[0];                  // last: the move follows it
+                root.measuredAnchor = p[0];          // last: the move follows it
                 const positions = Object.assign({}, cache.positions);
                 positions[quiet.measuring] = { anchor: p[0], luma: parseFloat(p[5]) };
                 cache.positions = positions;
@@ -77,7 +79,7 @@ Item {
     Item {
             id: win
             anchors.fill: parent
-            visible: HyprlandData.activeWorkspace?.id !== 10 && !GlobalStates.screenLocked
+            visible: AshuraSettings.clockEnabled && HyprlandData.activeWorkspace?.id !== 10 && !GlobalStates.screenLocked
 
             readonly property bool atTop: root.anchor.startsWith("top")
             readonly property bool atBottom: root.anchor.startsWith("bottom")
@@ -112,13 +114,14 @@ Item {
 
                 Text {
                     anchors.right: win.atRight ? parent.right : undefined
-                    text: Qt.formatDateTime(DateTime.clock.date, "HH:mm")
+                    text: Qt.formatDateTime(DateTime.clock.date, AshuraSettings.clock24h ? "HH:mm" : "h:mm AP")
                     font.family: "JetBrainsMono Nerd Font"
                     font.pixelSize: root.size
                     font.bold: true
                     color: win.fg
                 }
                 Text {
+                    visible: AshuraSettings.clockShowDate
                     anchors.right: win.atRight ? parent.right : undefined
                     text: Qt.formatDateTime(DateTime.clock.date, "dddd, dd MMMM")
                     font.family: "JetBrainsMono Nerd Font"

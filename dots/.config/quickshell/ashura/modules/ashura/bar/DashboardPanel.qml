@@ -147,7 +147,8 @@ HoverPanel {
                 anchors.fill: parent
                 anchors.margins: 6
                 fillMode: Image.PreserveAspectFit
-                source: Quickshell.shellPath("assets/ashura/dashboard.gif")
+                // Settings, Dashboard: any gif; empty means the bundled one.
+                source: AshuraSettings.dashboardGif !== "" ? `file://${AshuraSettings.dashboardGif}` : Quickshell.shellPath("assets/ashura/dashboard.gif")
                 playing: root.shown && root.tab === 0
             }
         }
@@ -399,6 +400,7 @@ HoverPanel {
         }
         // The bongo cat (caelestia's), drumming only while music plays.
         AnimatedImage {
+            visible: AshuraSettings.dashboardBongoCat
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredWidth: 180
             Layout.preferredHeight: 116
