@@ -413,56 +413,38 @@ HoverPanel {
 
     // ------------------------------------------------------------ Performance
     // After caelestia's Performance tab: numbers and rings, no graphs.
-    // The battery as a battery: its outline fills to the charge level, with a
-    // bolt in the middle while the charger is in. "Plugged in" covers a full
-    // battery or one held below 100% by the charge limit (UPower then reports
-    // "fully charged" or "pending", not "charging").
+    // Power profile colours: green for saving, the theme's colour for balanced,
+    // warm for performance. The battery card fills in the active one.
+    function profileColour(profile) {
+        return profile === PowerProfile.PowerSaver ? "#7fcf8a"
+            : profile === PowerProfile.Performance ? "#ff8a5c" : Appearance.colors.colPrimary;
+    }
+    function profileInk(profile) {
+        return profile === PowerProfile.PowerSaver ? "#0f2412"
+            : profile === PowerProfile.Performance ? "#2b1206" : Appearance.colors.colOnPrimary;
+    }
+
+    // The text of the battery card; the card itself is the gauge (BatteryCard).
+    // "Plugged in" covers a full battery or one held below 100% by the charge
+    // limit (UPower then reports "fully charged" or "pending", not "charging").
     component BatteryBlock: ColumnLayout {
         id: batt
         readonly property bool onAc: !UPower.onBattery
-        readonly property real level: Battery.percentage
-        readonly property color fill: Battery.isLowAndNotCharging ? Appearance.colors.colError : Appearance.colors.colPrimary
-        spacing: 6
-        SubLabel {
-            text: Battery.isCharging ? Translation.tr("Charging") : batt.onAc ? Translation.tr("Plugged in") : Translation.tr("On battery")
+        spacing: 2
+        RowLayout {
+            spacing: 4
+            MaterialSymbol {
+                visible: batt.onAc
+                text: "bolt"
+                fill: 1
+                iconSize: Appearance.font.pixelSize.larger
+                color: Appearance.colors.colOnLayer2
+            }
+            SubLabel { text: Battery.isCharging ? Translation.tr("Charging") : batt.onAc ? Translation.tr("Plugged in") : Translation.tr("On battery") }
         }
         Item { Layout.fillHeight: true }
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 3
-            Rectangle {   // the body
-                Layout.fillWidth: true
-                Layout.preferredHeight: 58
-                radius: 14
-                color: "transparent"
-                border.width: 2
-                border.color: Appearance.colors.colOutlineVariant
-                Rectangle {   // the charge
-                    anchors { left: parent.left; top: parent.top; bottom: parent.bottom; margins: 5 }
-                    width: Math.max(radius * 2, (parent.width - 10) * batt.level)
-                    radius: 9
-                    color: batt.fill
-                    Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
-                }
-                MaterialSymbol {
-                    anchors.centerIn: parent
-                    visible: batt.onAc
-                    text: "bolt"
-                    fill: 1
-                    iconSize: 30
-                    // Readable on both the fill and the empty part.
-                    color: batt.level > 0.55 ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer2
-                }
-            }
-            Rectangle {   // the terminal nub
-                Layout.preferredWidth: 5
-                Layout.preferredHeight: 20
-                radius: 2
-                color: Appearance.colors.colOutlineVariant
-            }
-        }
         Label {
-            text: `${Math.round(batt.level * 100)}%`
+            text: `${Math.round(Battery.percentage * 100)}%`
             font.pixelSize: 30
             font.family: Appearance.font.family.numbers
             color: Battery.isLowAndNotCharging ? Appearance.colors.colError : Appearance.colors.colOnLayer2
@@ -576,11 +558,26 @@ HoverPanel {
             usage: root.stats.gpuUsage ?? 0
             temp: root.stats.gpuTemp ?? -1
         }
-        // Battery, tall, with the power profile under it
+        // Battery, tall, with the power profile under it. The card is the
+        // battery: it fills from the bottom to the charge level, in the colour
+        // of the active power profile.
         Card {
+            id: battCard
             Layout.row: 0; Layout.column: 2; Layout.rowSpan: 2
             Layout.preferredWidth: 200
             Layout.fillHeight: true
+            Rectangle {
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                height: parent.height * Battery.percentage
+                readonly property bool full: Battery.percentage > 0.97
+                bottomLeftRadius: battCard.radius
+                bottomRightRadius: battCard.radius
+                topLeftRadius: full ? battCard.radius : 0
+                topRightRadius: full ? battCard.radius : 0
+                color: Qt.alpha(root.profileColour(PowerProfiles.profile), Battery.isLowAndNotCharging ? 0.5 : 0.22)
+                Behavior on height { NumberAnimation { duration: 500; easing.type: Easing.OutCubic } }
+                Behavior on color { ColorAnimation { duration: 300 } }
+            }
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 14
@@ -601,14 +598,15 @@ HoverPanel {
                         implicitHeight: 34
                         buttonRadius: 17
                         toggled: active
-                        colBackgroundToggled: Appearance.colors.colPrimary
+                        colBackgroundToggled: root.profileColour(modelData.profile)
+                        colBackgroundToggledHover: root.profileColour(modelData.profile)
                         onClicked: PowerProfiles.profile = modelData.profile
                         contentItem: RowLayout {
                             anchors.centerIn: parent
                             spacing: 6
                             MaterialSymbol { text: modelData.icon; iconSize: Appearance.font.pixelSize.larger
-                                color: active ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer2 }
-                            StyledText { text: modelData.name; color: active ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer2 }
+                                color: active ? root.profileInk(modelData.profile) : Appearance.colors.colOnLayer2 }
+                            StyledText { text: modelData.name; color: active ? root.profileInk(modelData.profile) : Appearance.colors.colOnLayer2 }
                         }
                     }
                 }
