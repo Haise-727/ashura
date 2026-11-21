@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# Ashura lock guard: the session must never be stranded behind a dead lock screen.
+#
+# The shell (Quickshell) draws the lock screen. If the shell crashes while the
+# session is locked, Hyprland keeps the session locked and shows its "lockscreen
+# died" screen, with no way to type a password. Because Hyprland is configured with
+# misc.allow_session_lock_restore (set in hyprland/general.lua), a NEW locker can take the lock
+# over. This guard notices and starts hyprlock, so you get a working password
+# prompt; once you are unlocked it starts the shell again.
+#
+# How it tells:
+#   locked   any monitor lists "LOCK" in solitaryBlockedBy (`hyprctl monitors -j`)
+#   shell    a `qs -c ashura` process exists
+#   orphan   locked, the shell is alive but says it holds no lock (it was
+#            reloaded or restarted under the lock: Hyprland keeps the session
+#            locked and shows "lockscreen died"). Asked through the shell's
+#            `lock state` IPC.
+# It waits for two checks in a row before acting, so the shell's own restart bind
+# (which kills and restarts qs) and a normal unlock never race it.
+#
+# Started once per login from hypr/custom/execs.lua.
+
+INTERVAL=2
+qs_cmd=(qs -c ashura)
+
+locked() {
+    hyprctl monitors -j 2>/dev/null | grep -q '"LOCK"'
+}
+# Only processes of THIS Hyprland instance count (a nested or second session
+# runs its own shell), matched on HYPRLAND_INSTANCE_SIGNATURE in their environment.
+ours() {
+    local p
+    for p in "$@"; do
+        tr '\0' '\n' < "/proc/$p/environ" 2>/dev/null | grep -qx "HYPRLAND_INSTANCE_SIGNATURE=$HYPRLAND_INSTANCE_SIGNATURE" && return 0
+    done
+    return 1
+}
+# The shell is any live qs/quickshell process of this session that is not the
+# settings app. NOT matched on "qs -c ashura": after a hot reload Quickshell shows
+# up as plain "/usr/bin/quickshell", and matching the old name made this guard
+# start a second shell (two bars, 2026-11-09).
+shell_running() {
+    local p
+    for p in $(pgrep -x 'qs|quickshell'); do
+        grep -q '^Z' <(awk '{print $3}' "/proc/$p/stat" 2>/dev/null) && continue   # zombie
+        tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -q 'settings.qml' && continue
+        ours "$p" && return 0
+    done
+    return 1
+}
+locker_running() {
+    ours $(pgrep -x hyprlock)
+}
+
+# While locked, the shell parks each monitor on workspace (2147483647 - original) and moves
+# back on unlock. A crash skips the move back, so do it here.
+restore_workspace() {
+    local id
+    id=$(hyprctl activeworkspace -j 2>/dev/null | grep -o '"id": *[0-9]*' | head -1 | grep -o '[0-9]*$')
+    if [ -n "$id" ] && [ "$id" -gt 2147483000 ]; then
+        local back=$((2147483647 - id))
+        echo "$(date '+%F %T') returning from the lock workspace $id to $back"
+        hyprctl dispatch "hl.dsp.focus({ workspace = $back })" >/dev/null
+    fi
+}
+
+shell_says_unlocked() {
+    [ "$(timeout 3 "${qs_cmd[@]}" ipc call lock state 2>/dev/null)" = "unlocked" ]
+}
+
+missing=0
+orphan=0
+restarts=0          # consecutive restarts; backs off if the shell keeps dying
+while hyprctl version >/dev/null 2>&1; do          # ends with the Hyprland session
+    if shell_running; then
+        missing=0
+        restarts=0
+    else
+        missing=$((missing + 1))
+    fi
+
+    # Locked with a live shell that holds no lock: nobody can take a password.
+    if [ "$missing" -eq 0 ] && locked && ! locker_running && shell_says_unlocked; then
+        orphan=$((orphan + 1))
+        if [ "$orphan" -ge 2 ]; then
+            echo "$(date '+%F %T') locked but the shell holds no lock: handing the lock to hyprlock"
+            hyprlock -q --immediate-render &
+            orphan=0
+        fi
+    else
+        orphan=0
+    fi
+
+    if [ "$missing" -ge 2 ]; then
+        if locked && ! locker_running; then
+            echo "$(date '+%F %T') shell gone while locked: handing the lock to hyprlock"
+            hyprlock -q --immediate-render &
+        elif ! locked && ! locker_running; then
+            restarts=$((restarts + 1))
+            if [ "$restarts" -le 5 ]; then
+                echo "$(date '+%F %T') shell gone: starting it again ($restarts)"
+                restore_workspace
+                setsid "${qs_cmd[@]}" >/dev/null 2>&1 < /dev/null &
+            elif [ "$restarts" -eq 6 ]; then
+                echo "$(date '+%F %T') shell keeps dying; no more restarts until it runs again"
+                notify-send -u critical "Shell keeps crashing" "Start it with: qs -c ashura" -a "Ashura" 2>/dev/null
+            fi
+            missing=0
+        fi
+    fi
+    sleep "$INTERVAL"
+done

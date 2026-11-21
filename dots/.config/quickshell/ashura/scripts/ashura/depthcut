@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+"""depthcut: split a wallpaper into a character and a clean background, for the
+desktop parallax (modules/ashura/wallpaperFx/CharacterParallax.qml).
+
+  1. Cut-out: BiRefNet (the full general model, not the lite one; half
+     precision to fit 8 GB of VRAM beside the desktop) on the GPU (onnxruntime
+     CUDA) when it is there, scaled back to the image's full size.
+  2. The background behind the character is filled in with LaMa (big-lama,
+     ONNX), working on a crop round the character so the fill keeps detail.
+  3. Saved per image (cached by path, size and date) in ~/.cache/ashura/depth:
+       <key>-mask.png   the character's alpha, full size
+       <key>-bg.jpg     the wallpaper with the character removed, full size
+
+With both, the shell moves the character over its own clean background: no
+second copy of the character shows when it shifts (the old version moved a
+cut-out over the original picture, so the original showed behind it).
+
+  depthcut get IMG     prints "<mask> <bg>" (making them if needed); exit 1 if
+                       IMG has no clear character
+  depthcut warm DIR    prepares every image in DIR and its subfolders
+  depthcut install     downloads the BiRefNet and LaMa models
+
+Runs in the wallfx venv (~/.local/share/wallfx/venv): rembg, onnxruntime-gpu,
+opencv, numpy, pillow.
+"""
+import hashlib
+import json
+import os
+import sys
+
+HOME = os.path.expanduser("~")
+CACHE = os.path.join(HOME, ".cache", "ashura", "depth")
+VENV = os.path.join(HOME, ".local", "share", "wallfx")
+VENV_PY = os.path.join(VENV, "venv", "bin", "python")
+LAMA = os.path.join(VENV, "models", "lama_fp32.onnx")
+LAMA_URL = "https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx"
+EXTS = (".jpg", ".jpeg", ".png", ".webp")
+
+
+def reexec_in_venv():
+    if sys.executable != VENV_PY and os.path.exists(VENV_PY):
+        os.execv(VENV_PY, [VENV_PY, os.path.abspath(__file__), *sys.argv[1:]])
+
+
+def key(img):
+    st = os.stat(img)
+    return hashlib.sha1(f"{os.path.realpath(img)}|{st.st_size}|{int(st.st_mtime)}".encode()).hexdigest()[:16]
+
+
+def providers():
+    import onnxruntime as ort
+    try:
+        ort.preload_dlls()          # the CUDA libraries installed with onnxruntime-gpu
+    except Exception:
+        pass
+    have = ort.get_available_providers()
+    # Lean on VRAM (8 GB, shared with the desktop): grow the pool only as
+    # needed and pick convolution algorithms without the big benchmark buffers.
+    cuda = ("CUDAExecutionProvider", {
+        "arena_extend_strategy": "kSameAsRequested",
+        "cudnn_conv_algo_search": "HEURISTIC",
+        "gpu_mem_limit": 6 * 1024 ** 3,
+    })
+    return ([cuda] if "CUDAExecutionProvider" in have else []) + ["CPUExecutionProvider"]
+
+
+BIREFNET = os.path.join(VENV, "models", "birefnet_fp16.onnx")
+BIREFNET_URL = "https://huggingface.co/onnx-community/BiRefNet-ONNX/resolve/main/onnx/model_fp16.onnx"
+
+_cut = None
+def cutout(im):
+    """The character's alpha (PIL 'L', same size as im). BiRefNet (general, the
+    full model, half precision so it fits the GPU next to the desktop)."""
+    global _cut
+    import numpy as np
+    import onnxruntime as ort
+    from PIL import Image
+    if _cut is None:
+        _cut = ort.InferenceSession(BIREFNET, providers=providers())
+    x = np.asarray(im.convert("RGB").resize((1024, 1024), Image.BILINEAR), np.float32) / 255.0
+    x = (x - np.array([0.485, 0.456, 0.406], np.float32)) / np.array([0.229, 0.224, 0.225], np.float32)
+    out = _cut.run(None, {_cut.get_inputs()[0].name: x.transpose(2, 0, 1)[None].astype(np.float32)})[0][0, 0]
+    if out.min() < 0 or out.max() > 1:
+        out = 1 / (1 + np.exp(-out))           # logits -> probability
+    m = Image.fromarray((np.clip(out, 0, 1) * 255).astype(np.uint8))
+    return m.resize(im.size, Image.BILINEAR)
+
+
+_lama = None
+def inpaint(rgb, hole):
+    """LaMa on a 512x512 crop. rgb uint8 HxWx3, hole uint8 HxW (255 = fill)."""
+    global _lama
+    import numpy as np
+    import onnxruntime as ort
+    import cv2
+    if _lama is None:
+        # On the CPU: at 512x512 it takes a second or two, and on the GPU beside
+        # BiRefNet it ran out of the 8 GB.
+        _lama = ort.InferenceSession(LAMA, providers=["CPUExecutionProvider"])
+    h, w = hole.shape
+    img = cv2.resize(rgb, (512, 512), interpolation=cv2.INTER_AREA).astype(np.float32) / 255.0
+    m = (cv2.resize(hole, (512, 512), interpolation=cv2.INTER_NEAREST) > 127).astype(np.float32)
+    inputs = {i.name: None for i in _lama.get_inputs()}
+    names = [i.name for i in _lama.get_inputs()]
+    feed = {names[0]: img.transpose(2, 0, 1)[None], names[1]: m[None, None]}
+    out = _lama.run(None, feed)[0][0].transpose(1, 2, 0)
+    if out.max() <= 1.5:
+        out = out * 255.0
+    out = np.clip(out, 0, 255).astype(np.uint8)
+    return cv2.resize(out, (w, h), interpolation=cv2.INTER_CUBIC)
+
+
+def make(img):
+    import numpy as np
+    import cv2
+    from PIL import Image
+    os.makedirs(CACHE, exist_ok=True)
+    base = os.path.join(CACHE, key(img))
+    meta_path, mask_path, bg_path = base + ".json", base + "-mask.png", base + "-bg.jpg"
+    if os.path.exists(meta_path):
+        meta = json.load(open(meta_path))
+        if not meta.get("ok"):
+            return None
+        if os.path.exists(mask_path) and os.path.exists(bg_path):
+            return mask_path, bg_path
+
+    im = Image.open(img).convert("RGB")
+    alpha = cutout(im)
+    a = np.asarray(alpha, np.float32) / 255.0
+    h, w = a.shape
+    b = (a > 0.5).astype(np.uint8)
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(b, connectivity=8)
+    keep = np.zeros(n, bool)
+    keep[1:] = stats[1:, cv2.CC_STAT_AREA] >= 0.002 * w * h
+    b = keep[lab].astype(np.uint8)
+    cover = float(b.mean())
+    ok = 0.008 <= cover <= 0.72
+    meta = {"img": img, "ok": ok, "cover": round(cover, 3), "w": w, "h": h}
+    if not ok:
+        json.dump(meta, open(meta_path, "w"))
+        return None
+    # The alpha keeps the model's soft edge, minus the specks.
+    a = a * cv2.dilate(b, np.ones((9, 9), np.uint8)).astype(np.float32)
+
+    # Fill: a hole a little larger than the character (its glow and stray
+    # hairs go too), on a square crop round it, so LaMa works at detail.
+    rgb = np.asarray(im)
+    hole = cv2.dilate((a > 0.15).astype(np.uint8) * 255, np.ones((25, 25), np.uint8))
+    ys, xs = np.nonzero(hole)
+    pad = int(0.08 * max(w, h))
+    x0, x1 = max(0, xs.min() - pad), min(w, xs.max() + pad)
+    y0, y1 = max(0, ys.min() - pad), min(h, ys.max() + pad)
+    side = max(x1 - x0, y1 - y0)
+    cx, cy = (x0 + x1) // 2, (y0 + y1) // 2
+    x0, y0 = max(0, min(w - side, cx - side // 2)), max(0, min(h - side, cy - side // 2))
+    x1, y1 = min(w, x0 + side), min(h, y0 + side)
+    filled = inpaint(rgb[y0:y1, x0:x1], hole[y0:y1, x0:x1])
+    bg = rgb.copy()
+    soft = cv2.GaussianBlur(hole[y0:y1, x0:x1].astype(np.float32) / 255.0, (0, 0), 3)[..., None]
+    bg[y0:y1, x0:x1] = (filled * soft + rgb[y0:y1, x0:x1] * (1 - soft)).astype(np.uint8)
+
+    Image.fromarray((a * 255).astype(np.uint8)).save(mask_path)
+    Image.fromarray(bg).save(bg_path, quality=93)
+    json.dump(meta, open(meta_path, "w"))
+    return mask_path, bg_path
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+    cmd, rest = argv[0], argv[1:]
+    if cmd == "install":
+        import urllib.request
+        os.makedirs(os.path.dirname(LAMA), exist_ok=True)
+        for path, url in ((LAMA, LAMA_URL), (BIREFNET, BIREFNET_URL)):
+            if not os.path.exists(path):
+                urllib.request.urlretrieve(url, path + ".part")
+                os.rename(path + ".part", path)
+            print(path)
+        return 0
+    reexec_in_venv()
+    if cmd == "get":
+        r = make(rest[0])
+        if not r:
+            return 1
+        print(*r)
+        return 0
+    if cmd == "warm":
+        folder = rest[0] if rest else os.path.join(HOME, "Pictures", "Wallpapers")
+        for dirpath, dirnames, filenames in os.walk(folder, followlinks=True):
+            dirnames.sort()
+            for f in sorted(filenames):
+                if f.lower().endswith(EXTS):
+                    p = os.path.join(dirpath, f)
+                    try:
+                        r = make(p)
+                        print(("cut     " if r else "none    ") + os.path.relpath(p, folder), flush=True)
+                    except Exception as e:
+                        print(f"error   {f}: {e}", file=sys.stderr, flush=True)
+        return 0
+    print(f"depthcut: unknown command '{cmd}'", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

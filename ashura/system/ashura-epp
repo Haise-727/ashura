@@ -1,0 +1,20 @@
+#!/bin/sh
+# Ashura: keep the desktop at 144 fps in the Balanced power profile.
+#
+# power-profiles-daemon sets the CPU's energy preference (EPP) to balance_power
+# in Balanced on battery. Measured on this laptop (2026-11-09): opening search
+# then dropped 71 of ~420 frames below 144 fps; with EPP "performance" none.
+# The firmware's own Balanced limits (platform_profile) are left as they are.
+#
+# Every 2 s: unless the profile is the power saver, EPP is set to performance
+# on every core (power-profiles-daemon rewrites it on profile and AC changes).
+# Installed as /usr/local/bin/ashura-epp, run by ashura-epp.service (root).
+while :; do
+    profile=$(cat /sys/firmware/acpi/platform_profile 2>/dev/null)
+    if [ "$profile" != "low-power" ] && [ "$profile" != "quiet" ]; then
+        for f in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do
+            [ "$(cat "$f")" = performance ] || echo performance > "$f" 2>/dev/null
+        done
+    fi
+    sleep 2
+done

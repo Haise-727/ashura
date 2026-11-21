@@ -1,0 +1,10 @@
+[Unit]
+Description=Ashura: CPU energy preference "performance" outside the power saver (144 fps in Balanced)
+After=power-profiles-daemon.service
+
+[Service]
+ExecStart=/usr/local/bin/ashura-epp
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

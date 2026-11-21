@@ -1,0 +1,15 @@
+#!/bin/sh
+# Ashura: print the touchpad's swipe gesture begin/end lines (3+ fingers; two
+# fingers are scrolling, not gestures). Used by services/TouchpadSwipe.qml to
+# know when Hyprland is sliding workspaces, which it does not report itself.
+# Needs read access to /dev/input (the "input" group).
+dev=$(awk '/^$/{t=0} /^N: Name=.*[Tt]ouchpad/{t=1}
+    t && /^H: Handlers=/ { if (match($0, /event[0-9]+/)) { print "/dev/input/" substr($0, RSTART, RLENGTH); exit } }' /proc/bus/input/devices)
+[ -n "$dev" ] || { echo "no touchpad" >&2; exit 1; }
+# Stop the pipeline (this script's own children only) when the shell stops
+# this script. Not `kill 0`: that is the whole process group, which can
+# include the shell that started it.
+trap 'kill $(pgrep -P $$) 2>/dev/null; exit 0' TERM INT
+stdbuf -oL libinput debug-events --device "$dev" 2>/dev/null \
+    | grep --line-buffered -E 'GESTURE_SWIPE_(BEGIN|END)' &
+wait

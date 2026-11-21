@@ -1,0 +1,9 @@
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Qt language server config, written per machine
+/dots/.config/quickshell/ashura/.qmlls.ini
+
+# Editor backups
+*~

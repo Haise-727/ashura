@@ -1,0 +1,7 @@
+# Ashura booru blacklist: one tag per line. Any result carrying one of these tags
+# is dropped before it is shown, on every site, whatever the NSFW switch says.
+# Filtering happens on the results, so it does not use up Danbooru's two-tag
+# search limit. Lines starting with # are ignored; edits apply at once.
+#
+# Example:
+# gore

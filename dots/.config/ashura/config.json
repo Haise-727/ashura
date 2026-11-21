@@ -1,0 +1,28 @@
+{
+  "policies": {
+    "ai": 0
+  },
+  "sidebar": {
+    "translator": {
+      "enable": true
+    }
+  },
+  "bar": {
+    "weather": {
+      "enable": false
+    }
+  },
+  "background": {
+    "widgets": {
+      "weather": {
+        "enable": false
+      },
+      "clock": {
+        "enable": false
+      }
+    }
+  },
+  "battery": {
+    "automaticSuspend": false
+  }
+}

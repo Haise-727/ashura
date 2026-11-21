@@ -1,0 +1,6 @@
+[submodule "dots/.config/quickshell/ashura/modules/common/widgets/shapes"]
+	path = dots/.config/quickshell/ashura/modules/common/widgets/shapes
+	url = https://github.com/end-4/rounded-polygon-qmljs.git
+[submodule "devpit"]
+	path = devpit
+	url = https://github.com/Haise-727/devpit.git

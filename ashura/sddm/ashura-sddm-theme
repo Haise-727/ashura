@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Ashura: set the SDDM login screen to one of qylock's themes.
+# Installed root-owned at /usr/local/bin/ashura-sddm-theme and run through pkexec
+# by the shell's login theme picker, so the password prompt is the normal polkit one.
+#
+#   ashura-sddm-theme apply <theme name> <qylock themes dir>
+#
+# Only the chosen theme is copied (all of qylock is ~560 MB). The copy and the
+# config change are each done to a temp path and renamed, so a failure part way
+# never leaves SDDM pointing at a half-copied theme.
+set -euo pipefail
+[ "$(id -u)" = 0 ] || { echo "needs root: run it through pkexec" >&2; exit 1; }
+[ "${1:-}" = apply ] || { echo "usage: ashura-sddm-theme apply <name> <qylock themes dir>" >&2; exit 2; }
+name="${2:-}"
+src="${3:-}"
+[[ "$name" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "bad theme name: $name" >&2; exit 2; }
+from="$src/$name"
+[ -f "$from/metadata.desktop" ] && [ -f "$from/Main.qml" ] || { echo "not a qylock theme: $from" >&2; exit 2; }
+
+dest="/usr/share/sddm/themes/qylock-$name"
+rm -rf "$dest.new"
+cp -r "$from" "$dest.new"
+chown -R root:root "$dest.new"
+chmod -R u=rwX,go=rX "$dest.new"
+rm -rf "$dest"
+mv "$dest.new" "$dest"
+
+mkdir -p /etc/sddm.conf.d
+printf '[Theme]\nCurrent=qylock-%s\n' "$name" > /etc/sddm.conf.d/10-theme.conf.new
+mv /etc/sddm.conf.d/10-theme.conf.new /etc/sddm.conf.d/10-theme.conf
+echo "login theme is now qylock-$name (shown at the next login)"

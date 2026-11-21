@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+"""depthlayers: turn a wallpaper into layers at different depths, for the
+desktop parallax (modules/ashura/wallpaperFx/CharacterParallax.qml).
+
+This is the "layered depth image" approach (as in 3D Photo Inpainting, Shih et
+al. 2020, and Facebook 3D photos), kept simple:
+
+  1. Depth: Depth Anything V2 (base, fp16, onnx-community) on the GPU gives a
+     relative depth for every pixel (high = near).
+  2. Layers: the depths are split into K layers (3 by default) by 1-D k-means,
+     with soft edges between them.
+  3. Fill: each layer except the front one is completed behind the layers in
+     front of it with LaMa, so when a near layer moves aside there is real
+     picture behind it, not a hole or a second copy of the near thing.
+  4. The shell draws the layers back to front, each moved by its own depth
+     (per pixel, from its depth image), so nothing is a flat cut-out.
+
+Fallback (option 1, always written): the depth map alone; the shader then
+warps the original picture by depth. Used when the layers are missing.
+
+Cached in ~/.cache/ashura/layers/<key>/ (key: path, size and date):
+  disp.png           the depth map (0 far .. 255 near), full size
+  layerN.png         RGBA, N = 0 (back) .. K-1 (front)
+  depthN.png         the depth to move layer N's pixels by (filled areas take
+                     the layer's own depth)
+  meta.json          {"ok": true, "k": K, "depths": [...], "w": .., "h": ..}
+
+  depthlayers get IMG    prints the cache folder (making it if needed)
+  depthlayers warm DIR   prepares every image in DIR and its subfolders
+  depthlayers install    downloads Depth Anything V2 (LaMa: depthcut install)
+
+Runs in the wallfx venv; uses depthcut's providers() and inpaint().
+"""
+import hashlib
+import json
+import os
+import sys
+
+HOME = os.path.expanduser("~")
+CACHE = os.path.join(HOME, ".cache", "ashura", "layers")
+VENV = os.path.join(HOME, ".local", "share", "wallfx")
+VENV_PY = os.path.join(VENV, "venv", "bin", "python")
+DEPTH = os.path.join(VENV, "models", "depth_anything_v2_base_fp16.onnx")
+DEPTH_URL = "https://huggingface.co/onnx-community/depth-anything-v2-base/resolve/main/onnx/model_fp16.onnx"
+EXTS = (".jpg", ".jpeg", ".png", ".webp")
+K = 3
+VERSION = 1          # bump to rebuild every cache entry
+
+
+def reexec_in_venv():
+    if sys.executable != VENV_PY and os.path.exists(VENV_PY):
+        os.execv(VENV_PY, [VENV_PY, os.path.abspath(__file__), *sys.argv[1:]])
+
+
+def key(img):
+    st = os.stat(img)
+    return hashlib.sha1(f"{os.path.realpath(img)}|{st.st_size}|{int(st.st_mtime)}|v{VERSION}".encode()).hexdigest()[:16]
+
+
+def depthcut():
+    """depthcut's providers() and inpaint(), loaded from the file beside this one."""
+    import importlib.machinery
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "depthcut")
+    loader = importlib.machinery.SourceFileLoader("depthcut", path)
+    spec = importlib.util.spec_from_loader("depthcut", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+_depth = None
+def estimate_depth(rgb, providers):
+    """Relative depth, high = near, 0..1, same size as rgb (HxWx3 uint8)."""
+    global _depth
+    import numpy as np
+    import onnxruntime as ort
+    import cv2
+    if _depth is None:
+        _depth = ort.InferenceSession(DEPTH, providers=providers)
+    h, w = rgb.shape[:2]
+    # The short side at 518 (the model's training size), both sides multiples of 14.
+    s = 518 / min(h, w)
+    th, tw = max(14, round(h * s / 14) * 14), max(14, round(w * s / 14) * 14)
+    x = cv2.resize(rgb, (tw, th), interpolation=cv2.INTER_CUBIC).astype(np.float32) / 255.0
+    x = (x - np.array([0.485, 0.456, 0.406], np.float32)) / np.array([0.229, 0.224, 0.225], np.float32)
+    d = _depth.run(None, {_depth.get_inputs()[0].name: x.transpose(2, 0, 1)[None].astype(np.float32)})[0][0]
+    d = cv2.resize(d.astype(np.float32), (w, h), interpolation=cv2.INTER_CUBIC)
+    lo, hi = np.percentile(d, 1), np.percentile(d, 99)
+    d = np.clip((d - lo) / max(hi - lo, 1e-6), 0, 1)
+    # Edge-aware smoothing: keeps depth edges on the picture's edges.
+    try:
+        d = cv2.ximgproc.guidedFilter(rgb, d, 8, 1e-3)
+    except Exception:
+        d = cv2.bilateralFilter(d, 9, 0.1, 9)
+    return np.clip(d, 0, 1)
+
+
+def kmeans1d(v, k, iters=30):
+    import numpy as np
+    c = np.quantile(v, np.linspace(0.1, 0.9, k))
+    for _ in range(iters):
+        lab = np.argmin(np.abs(v[:, None] - c[None, :]), axis=1)
+        new = np.array([v[lab == i].mean() if np.any(lab == i) else c[i] for i in range(k)])
+        if np.allclose(new, c, atol=1e-4):
+            break
+        c = new
+    return np.sort(c)
+
+
+def make(img, dc):
+    import numpy as np
+    import cv2
+    from PIL import Image
+    out = os.path.join(CACHE, key(img))
+    meta_path = os.path.join(out, "meta.json")
+    if os.path.exists(meta_path):
+        return out
+    os.makedirs(out, exist_ok=True)
+    rgb = np.asarray(Image.open(img).convert("RGB"))
+    h, w = rgb.shape[:2]
+    prov = dc.providers()
+    d = estimate_depth(rgb, prov)
+    Image.fromarray((d * 255).astype(np.uint8)).save(os.path.join(out, "disp.png"))
+
+    # Layers: centres by k-means, boundaries half-way, soft edges either side.
+    sample = d[::4, ::4].ravel()
+    centres = kmeans1d(sample, K)
+    bounds = (centres[:-1] + centres[1:]) / 2
+    feather = 0.035
+    def above(b):          # soft "nearer than b"
+        return np.clip((d - (b - feather)) / (2 * feather), 0, 1)
+    # Membership: layer i = nearer than bound[i-1] and not nearer than bound[i].
+    member = []
+    for i in range(K):
+        a = above(bounds[i - 1]) if i > 0 else np.ones_like(d)
+        b = above(bounds[i]) if i < K - 1 else np.zeros_like(d)
+        member.append(np.clip(a - b, 0, 1))
+
+    depths = []
+    for i in range(K):
+        m = member[i]
+        layer_depth = float((d * m).sum() / max(m.sum(), 1))
+        depths.append(layer_depth)
+        alpha = m.copy()
+        colour = rgb.copy()
+        dep = np.where(m > 0.01, d, layer_depth)
+        if i < K - 1:
+            # What the nearer layers hide, widened by the most they can move
+            # aside, is filled in and made solid in this layer.
+            nearer = above(bounds[i])
+            hole = cv2.dilate((nearer > 0.1).astype(np.uint8) * 255, np.ones((31, 31), np.uint8))
+            if i == 0:
+                alpha = np.ones_like(d)          # the back layer covers everything
+            if hole.any():
+                filled = fill(dc, colour, hole)
+                hf = cv2.GaussianBlur(hole.astype(np.float32) / 255.0, (0, 0), 2)[..., None]
+                colour = (filled * hf + colour * (1 - hf)).astype(np.uint8)
+                alpha = np.maximum(alpha, hole.astype(np.float32) / 255.0)
+                dep = np.where(hole > 127, layer_depth, dep)
+        rgba = np.dstack([colour, (np.clip(alpha, 0, 1) * 255).astype(np.uint8)])
+        Image.fromarray(rgba, "RGBA").save(os.path.join(out, f"layer{i}.png"))
+        Image.fromarray((np.clip(dep, 0, 1) * 255).astype(np.uint8)).save(os.path.join(out, f"depth{i}.png"))
+
+    json.dump({"ok": True, "img": img, "k": K, "depths": depths, "w": w, "h": h, "version": VERSION},
+              open(meta_path, "w"))
+    return out
+
+
+def fill(dc, rgb, hole):
+    """LaMa over the hole: on a crop round it when it is small, the whole
+    picture when it is large (LaMa works at 512, so a small crop keeps detail)."""
+    import numpy as np
+    h, w = hole.shape
+    ys, xs = np.nonzero(hole)
+    pad = int(0.06 * max(w, h))
+    x0, x1 = max(0, xs.min() - pad), min(w, xs.max() + pad)
+    y0, y1 = max(0, ys.min() - pad), min(h, ys.max() + pad)
+    out = rgb.copy()
+    out[y0:y1, x0:x1] = dc.inpaint(rgb[y0:y1, x0:x1], hole[y0:y1, x0:x1])
+    return out
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+    cmd, rest = argv[0], argv[1:]
+    if cmd == "install":
+        import urllib.request
+        os.makedirs(os.path.dirname(DEPTH), exist_ok=True)
+        if not os.path.exists(DEPTH):
+            urllib.request.urlretrieve(DEPTH_URL, DEPTH + ".part")
+            os.rename(DEPTH + ".part", DEPTH)
+        print(DEPTH)
+        return 0
+    reexec_in_venv()
+    dc = depthcut()
+    if cmd == "get":
+        print(make(rest[0], dc))
+        return 0
+    if cmd == "warm":
+        folder = rest[0] if rest else os.path.join(HOME, "Pictures", "Wallpapers")
+        for dirpath, dirnames, filenames in os.walk(folder, followlinks=True):
+            dirnames.sort()
+            for f in sorted(filenames):
+                if f.lower().endswith(EXTS):
+                    p = os.path.join(dirpath, f)
+                    try:
+                        make(p, dc)
+                        print("layers  " + os.path.relpath(p, folder), flush=True)
+                    except Exception as e:
+                        print(f"error   {f}: {e}", file=sys.stderr, flush=True)
+        return 0
+    print(f"depthlayers: unknown command '{cmd}'", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

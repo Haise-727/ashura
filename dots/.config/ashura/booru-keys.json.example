@@ -1,0 +1,4 @@
+{
+    "gelbooru": { "api_key": "from Gelbooru: My Account > Options > API Access Credentials", "user_id": "your numeric user id" },
+    "danbooru": { "login": "your Danbooru username", "api_key": "from Danbooru: My Account > API Key" }
+}
