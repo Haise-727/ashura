@@ -4,3 +4,4 @@
 [submodule "devpit"]
 	path = devpit
 	url = https://github.com/Haise-727/devpit.git
+	branch = main
