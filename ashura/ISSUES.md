@@ -13,6 +13,13 @@
 
 ## Limits
 
+- **Cockpit status** (CI, pull requests) needs `gh` logged in and a GitHub
+  remote; other repos show only their git state. Agents are found by process
+  name (claude, codex, aider, gemini, opencode and a few more) and working
+  directory.
+- **Dashboard calendar** is scaled down to fit beside the agenda; it is small
+  at 1080p.
+
 - **Outline transition.** It needs the BiRefNet model, downloaded on first use
   (Settings, Wallpapers, "Prepare transitions now"). Until then every change
   uses the pixel colonies.

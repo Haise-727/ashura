@@ -13,8 +13,8 @@ The shell is written in QML on [Quickshell](https://quickshell.org).
 |---|---|
 | **Repo cockpits** | A space of its own, workspaces 101 to 110, apart from your own 1 to 10. Super+D goes in and out, Super+Space picks a repo, and Super+1..0 stay inside the cockpit. Everything opened there belongs to the repo on stage: switching repo parks its windows and brings the next repo's back to the same slots. Ctrl+Super+D closes a repo. Driven by [devpit](https://github.com/Haise-727/devpit), included here as a submodule. |
 | **Docker** | The lower half of the right sidebar: containers grouped by compose project with start, stop, restart and logs; images and volumes with sizes. It never deletes anything. A bar pill shows running and total. |
-| **Dashboard** | Hover the middle of the top edge, or click the clock: you, the date, calendar and player; a Performance tab (CPU, GPU, battery with power profiles, disks, network, memory); an Apps tab with per app CPU and memory, close and kill; and the cockpits. |
-| **Edge panels** | Right edge: volume and brightness sliders, which also show when either changes. Left edge: hover for a second (or click) for the translator and booru. Bottom edge: the music bar with lyrics and seeking. Hover the bar's volume icon for a per app mixer. |
+| **Dashboard** | Hover the middle of the top edge, or click the clock. **Dashboard:** a clock inside a ring that fills as the day goes, you with your picture, a month where days with deadlines carry a dot (click a day to see, tick and add its items), and the player inside its visualizer ring. **Performance:** CPU, GPU, disks with free space, network, memory, and a battery card that fills like a battery in the colour of the power profile. **Apps:** every app as a bar as long as its memory, with its icon, CPU, and close or kill on hover. **Cockpits:** each repo's unpushed commits on a small git line, with changed files, CI, pull requests and any coding agent working in it. |
+| **Edge panels** | Right edge: a dial out of the edge with volume and brightness arcs, their values riding the tips; drag or scroll to change them. Volume and brightness keys send a ripple out of the edge with the new value. Left edge: a rail of icons for the translator, booru and screen translation. Bottom edge: the music bar with lyrics and seeking. Hover the bar's volume icon for a per app mixer. Each edge can be switched in Settings, Edges. |
 | **Music** | While something plays: a wave round the focused window in the border's colour, a visualizer along the bottom edge, synced lyrics on the desktop ([LRCLIB](https://lrclib.net)), and a ring round the cover in the dashboard. All of it from one shared cava, all of it off when nothing plays. Switches are in Settings, Music. |
 | **Wallpapers** | Super+W picks a random one, Super+Shift+W opens a coverflow picker with Normal and Live modes. Changes are drawn: the new wallpaper's character is outlined first, or it spreads in as pixel colonies. Live mode plays videos and shader wallpapers that react to music and the mouse. Every wallpaper recolours the shell, the terminal, GTK and Qt apps. |
 | **Launch workspace** | Workspace 10 is a full screen dashboard: profile, clock, media with cava, a lofi radio, notifications and system stats. |
@@ -90,6 +90,12 @@ lock drops the lock screen.
 - Run the `rollback.sh` the installer printed, then log out and in.
 - A crashed lock screen fixes itself: within a few seconds a plain password
   prompt (hyprlock) takes over. Type your password and the shell comes back.
+
+## Agenda
+
+Deadlines and to-dos live in `~/.config/ashura/agenda.json`, one list for the
+whole shell: the dashboard calendar shows and edits it, and anything else
+(a checklist, reminders) can read and write the same file.
 
 ## Screen translator
 
