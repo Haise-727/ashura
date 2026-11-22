@@ -276,9 +276,9 @@ Scope {
                                 spacing: 8
                                 Repeater {
                                     model: [
-                                        { icon: "translate", tip: Translation.tr("Translator"), tab: "translator" },
-                                        { icon: "bookmark_heart", tip: Translation.tr("Booru"), tab: "booru" },
-                                        { icon: "screen_search_desktop", tip: Translation.tr("Translate the screen"), tab: "" }
+                                        { icon: "g_translate", tab: "translator" },
+                                        { icon: "photo_library", tab: "booru" },
+                                        { icon: "document_scanner", tab: "" }   // translate what is on screen
                                     ]
                                     delegate: RippleButton {
                                         required property var modelData
@@ -304,7 +304,6 @@ Scope {
                                             iconSize: 28
                                             color: current ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer0
                                         }
-                                        StyledToolTip { text: modelData.tip }
                                     }
                                 }
                             }
