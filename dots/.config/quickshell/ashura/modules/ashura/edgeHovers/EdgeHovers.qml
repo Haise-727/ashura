@@ -18,7 +18,7 @@ import Quickshell.Wayland
 //                    edge or the panel -> the full right sidebar.
 //                    The same sliders pop up when volume or brightness changes
 //                    (replaces the old on-screen display).
-//   left    rest on it -> a rail of icons (translator, booru, screen
+//   left    hover -> a rail of icons (translator, booru, screen
 //           translate); an icon opens the sidebar on that tab. Click -> sidebar.
 //   bottom  hover -> the music card; it stays while the pointer is on it.
 //
@@ -28,7 +28,6 @@ Scope {
     id: root
     property bool enabled: true
     readonly property int depth: 3              // px of edge that reacts
-    readonly property int dwellMs: AshuraSettings.edgeLeftDwellMs   // left edge: hover this long to open
     readonly property int graceMs: 300          // time to move from edge to panel
 
     // ---- right: sliders ----
@@ -41,7 +40,7 @@ Scope {
     // ---- left: the icon rail ----
     property bool leftEdgeHovered: false
     property bool railHovered: false
-    property bool railOpen: false                 // set by the dwell, cleared after the grace
+    property bool railOpen: false                 // set on arrival at the edge, cleared after the grace
     readonly property bool railShown: AshuraSettings.edgeLeft && root.railOpen
         && !GlobalStates.sidebarLeftOpen && !GlobalStates.screenLocked
     Timer { id: railGrace; interval: root.graceMs; onTriggered: if (!root.leftEdgeHovered && !root.railHovered) root.railOpen = false }
@@ -203,8 +202,8 @@ Scope {
                 color: "transparent"
                 WlrLayershell.namespace: "quickshell:edgeRipple"
                 WlrLayershell.layer: WlrLayer.Overlay
-                implicitWidth: 170
-                implicitHeight: 340
+                implicitWidth: 210
+                implicitHeight: 420
                 visible: root.rippleOn
                 mask: Region { item: noRippleInput }
                 Item { id: noRippleInput; width: 0; height: 0 }
@@ -224,16 +223,12 @@ Scope {
                 side: "left"; screenRef: perScreen.modelData; edgeOn: AshuraSettings.edgeLeft
                 showHighlight: false                     // the rail is the answer to the hover
                 onClicked: root.openSidebar("left")
-                // Only a fresh arrival on the edge counts: closing the sidebar
-                // with the pointer still there must not bring the rail back.
+                // Instant, like the right edge. Only a fresh arrival counts:
+                // closing the sidebar with the pointer still there must not
+                // bring the rail back.
                 onHoveredChanged: {
                     root.leftEdgeHovered = hovered;
-                    if (hovered && !GlobalStates.sidebarLeftOpen) dwell.restart(); else dwell.stop();
-                }
-                Timer {
-                    id: dwell
-                    interval: root.dwellMs
-                    onTriggered: if (leftStrip.hovered) root.railOpen = true
+                    if (hovered && !GlobalStates.sidebarLeftOpen) root.railOpen = true;
                 }
             }
             PanelWindow {

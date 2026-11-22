@@ -19,7 +19,6 @@ Singleton {
     property alias edgeRight: adapter.edgeRight
     property alias edgeLeft: adapter.edgeLeft
     property alias edgeBottom: adapter.edgeBottom
-    property alias edgeLeftDwellMs: adapter.edgeLeftDwellMs
     property alias edgeOsd: adapter.edgeOsd
     // Desktop clock (DesktopClock)
     property alias clockEnabled: adapter.clockEnabled
@@ -46,7 +45,6 @@ Singleton {
             property bool edgeRight: true                        // right edge: volume and brightness sliders
             property bool edgeLeft: true                         // left edge: the left sidebar
             property bool edgeBottom: true                       // bottom edge: the music bar
-            property int edgeLeftDwellMs: 300                    // rest this long on the left edge for the rail
             property bool edgeOsd: true                          // show the sliders when volume or brightness changes
             property bool clockEnabled: true
             property int clockSize: 96                           // px, the time; the date is ~18% of it

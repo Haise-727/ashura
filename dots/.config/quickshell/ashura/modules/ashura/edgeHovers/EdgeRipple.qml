@@ -26,13 +26,13 @@ Item {
     onSerialChanged: { ripple.restart(); }
     NumberAnimation on phase { id: ripple; from: 0; to: 1; duration: 1100; easing.type: Easing.OutCubic; running: false }
 
-    // Three rings, a third of the way apart, each growing and fading.
+    // Two thick rings, each growing and fading.
     Repeater {
-        model: 3
+        model: 2
         delegate: Shape {
             id: ring
             required property int index
-            readonly property real p: Math.max(0, Math.min(1, root.phase * 1.4 - index * 0.2))
+            readonly property real p: Math.max(0, Math.min(1, root.phase * 1.35 - index * 0.3))
             anchors.fill: parent
             preferredRendererType: Shape.CurveRenderer
             opacity: (1 - p) * 0.85
@@ -40,10 +40,10 @@ Item {
             ShapePath {
                 fillColor: "transparent"
                 strokeColor: Appearance.colors.colPrimary
-                strokeWidth: 3 * (1 - ring.p) + 0.5
+                strokeWidth: 9 * (1 - ring.p) + 2
                 PathAngleArc {
                     centerX: root.cx; centerY: root.cy
-                    radiusX: 44 + ring.p * 120; radiusY: 44 + ring.p * 120
+                    radiusX: 64 + ring.p * 130; radiusY: 64 + ring.p * 130
                     startAngle: 90; sweepAngle: 180
                 }
             }
@@ -52,21 +52,21 @@ Item {
 
     // The value, in a half disc flush with the edge.
     Rectangle {
-        x: root.cx - 44
-        y: root.cy - 44
-        width: 88
-        height: 88
-        radius: 44
+        x: root.cx - 64
+        y: root.cy - 64
+        width: 128
+        height: 128
+        radius: 64
         color: Appearance.colors.colLayer0
         Column {
             anchors.verticalCenter: parent.verticalCenter
-            x: 10
-            width: 30
+            x: 14
+            width: 44
             spacing: 0
             StyledText {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: root.muted ? "×" : `${root.value}`
-                font.pixelSize: Appearance.font.pixelSize.larger
+                font.pixelSize: 26
                 font.family: Appearance.font.family.numbers
                 font.weight: Font.DemiBold
                 color: Appearance.colors.colOnLayer0
@@ -74,7 +74,7 @@ Item {
             MaterialSymbol {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: root.isVol ? (root.muted ? "volume_off" : "volume_up") : "light_mode"
-                iconSize: 16
+                iconSize: 22
                 color: Appearance.colors.colPrimary
             }
         }

@@ -93,13 +93,24 @@ Item {
         Behavior on frac { enabled: !drag.pressed; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } } }
 
     // Icons at the start of each arc, numbers riding the tips.
-    component StartIcon: MaterialSymbol {
+    // A round badge on the start of each arc, holding its icon.
+    component StartIcon: Rectangle {
+        id: start
         property real r
-        readonly property point p: root.pointAt(r, root.a0 - 13)
-        // Kept inside the window: the start of each arc is close to the screen edge.
-        x: Math.min(p.x - width / 2, root.cx - width - 3); y: p.y - height / 2
-        iconSize: 17
-        color: Appearance.colors.colSubtext
+        property string text
+        readonly property point p: root.pointAt(r, root.a0)
+        x: p.x - width / 2; y: p.y - height / 2
+        width: 26; height: 26; radius: 13
+        color: Appearance.colors.colLayer0
+        border.width: 2
+        border.color: Appearance.colors.colLayer2
+        MaterialSymbol {
+            anchors.centerIn: parent
+            text: start.text
+            iconSize: 16
+            fill: 1
+            color: Appearance.colors.colOnLayer0
+        }
     }
     StartIcon { r: root.rOuter; text: root.muted ? "volume_off" : "volume_up" }
     StartIcon { r: root.rInner; text: "light_mode" }

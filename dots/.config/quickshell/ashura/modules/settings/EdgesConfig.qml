@@ -38,16 +38,6 @@ ContentPage {
             checked: AshuraSettings.edgeLeft
             onCheckedChanged: AshuraSettings.edgeLeft = checked
         }
-        ConfigSpinBox {
-            icon: "timer"
-            enabled: AshuraSettings.edgeLeft
-            text: Translation.tr("Left edge: rest there this long for the icon rail (ms)")
-            value: AshuraSettings.edgeLeftDwellMs
-            from: 200
-            to: 3000
-            stepSize: 100
-            onValueChanged: AshuraSettings.edgeLeftDwellMs = value
-        }
         ConfigSwitch {
             buttonIcon: "music_note"
             text: Translation.tr("Bottom edge: the music bar")
