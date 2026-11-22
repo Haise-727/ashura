@@ -12,6 +12,7 @@ QuickToggleModel {
     icon: toggled ? "keyboard_hide" : "keyboard"
     
     mainAction: () => {
+        GlobalStates.sidebarRightOpen = false;   // Ashura: out of the way first
         GlobalStates.oskOpen = !GlobalStates.oskOpen
     }
 

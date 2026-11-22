@@ -421,8 +421,11 @@ Singleton {
                             { "size": 2, "type": "network" },
                             { "size": 2, "type": "bluetooth"  },
                             { "size": 2, "type": "audio" },
-                            { "size": 1, "type": "mic" },
-                            { "size": 1, "type": "idleInhibitor" }
+                            { "size": 2, "type": "mic" },
+                            { "size": 1, "type": "idleInhibitor" },
+                            { "size": 1, "type": "screenSnip" },
+                            { "size": 1, "type": "onScreenKeyboard" },
+                            { "size": 1, "type": "darkMode" }
                         ]
                     }
                 }

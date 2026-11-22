@@ -14,6 +14,7 @@ QuickToggleModel {
     icon: "contrast"
     
     mainAction: () => {
+        GlobalStates.sidebarRightOpen = false;   // Ashura: out of the way first
         if (Appearance.m3colors.darkmode) {
             Quickshell.execDetached([Directories.wallpaperSwitchScriptPath, "--mode", "light", "--noswitch"]);
         } else {

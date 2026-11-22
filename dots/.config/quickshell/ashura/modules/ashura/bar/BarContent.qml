@@ -168,15 +168,8 @@ Item { // Bar content region
                     Layout.fillWidth: true
                 }
 
-                UtilButtons {
-                    visible: (Config.options.bar.verbose && root.useShortenedForm === 0)
-                    Layout.alignment: Qt.AlignVCenter
-                }
-
-                BatteryIndicator {
-                    visible: (root.useShortenedForm < 2 && Battery.available)
-                    Layout.alignment: Qt.AlignVCenter
-                }
+                // Ashura: screenshot, keyboard and theme live in the right
+                // sidebar's toggles; the battery sits at the far right.
             }
         }
     }
@@ -209,11 +202,18 @@ Item { // Bar content region
             spacing: 5
             layoutDirection: Qt.RightToLeft
 
+            // Ashura: the battery at the far right of the bar.
+            BatteryIndicator {
+                visible: Battery.available
+                Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                Layout.rightMargin: Appearance.rounding.screenRounding
+            }
+
             RippleButton { // Right sidebar button
                 id: rightSidebarButton
 
                 Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                Layout.rightMargin: Appearance.rounding.screenRounding
+                Layout.rightMargin: 2
                 Layout.fillWidth: false
 
                 implicitWidth: indicatorsRowLayout.implicitWidth + 10 * 2
@@ -320,19 +320,6 @@ Item { // Bar content region
             Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-            }
-
-            // Ashura: cockpit and Docker pills. They live here, in a group of their
-            // own, because the clock group beside the
-            // workspaces has a fixed width and squeezing it overlaps the date.
-            BarGroup {
-                Layout.leftMargin: 4
-                visible: root.useShortenedForm < 2
-                // Ashura: the cockpit pill moved to the dashboard's Cockpits tab.
-                DockerIndicator {
-                    visible: Docker.cliAvailable
-                    Layout.alignment: Qt.AlignVCenter
-                }
             }
         }
     }
