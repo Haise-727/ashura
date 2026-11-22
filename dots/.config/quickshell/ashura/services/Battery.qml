@@ -97,12 +97,13 @@ Singleton {
         if (root.soundEnabled) Audio.playSystemSound("complete");
     }
 
-    onIsPluggedInChanged: {
+    // Ashura: the plug/unplug sounds follow the charger itself. They used to
+    // follow the charge state, which flips between charging, pending and fully
+    // charged while a charge limit holds the battery, so they rang at random
+    // with the charger still in.
+    readonly property bool onAc: !UPower.onBattery
+    onOnAcChanged: {
         if (!root.available || !root.soundEnabled) return;
-        if (isPluggedIn) {
-            Audio.playSystemSound("power-plug")
-        } else {
-            Audio.playSystemSound("power-unplug")
-        }
+        Audio.playSystemSound(onAc ? "power-plug" : "power-unplug");
     }
 }
