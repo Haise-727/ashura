@@ -48,9 +48,21 @@ RippleButton {
         anchors.centerIn: parent
         width: 19.5
         height: 19.5
-        source: Config.options.bar.topLeftIcon == 'distro' ? SystemInfo.distroIcon : `${Config.options.bar.topLeftIcon}-symbolic`
+        // "ashura" draws the name's first kanji instead of an icon file.
+        readonly property bool kanji: Config.options.bar.topLeftIcon == 'ashura'
+        source: kanji ? "" : Config.options.bar.topLeftIcon == 'distro' ? SystemInfo.distroIcon : `${Config.options.bar.topLeftIcon}-symbolic`
         colorize: true
         color: Appearance.colors.colOnLayer0
+
+        Text {
+            anchors.centerIn: parent
+            visible: distroIcon.kanji
+            text: "阿"
+            font.family: "Noto Serif CJK JP"
+            font.pixelSize: 19
+            font.weight: Font.Bold
+            color: Appearance.colors.colOnLayer0
+        }
 
         Rectangle {
             opacity: root.showPing ? 1 : 0
