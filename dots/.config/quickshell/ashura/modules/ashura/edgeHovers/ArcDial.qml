@@ -87,10 +87,14 @@ Item {
     readonly property color sunColour: Qt.tint(Appearance.colors.colPrimary, Qt.alpha(Appearance.colors.colLayer0, 0.35))
     Arc { r: root.rOuter; colour: Appearance.colors.colLayer2 }
     Arc { r: root.rInner; colour: Appearance.colors.colLayer2 }
-    Arc { r: root.rOuter; frac: root.volFrac; colour: root.muted ? Appearance.colors.colSubtext : Appearance.colors.colPrimary
-        Behavior on frac { enabled: !drag.pressed; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } } }
-    Arc { r: root.rInner; frac: root.sun; colour: root.sunColour
-        Behavior on frac { enabled: !drag.pressed; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } } }
+    // What the arcs and tips show: the real values, eased. A click glides the
+    // knob to the new spot; while dragging it follows the pointer directly.
+    property real shownVol: root.volFrac
+    property real shownSun: root.sun
+    Behavior on shownVol { enabled: !drag.moving; NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+    Behavior on shownSun { enabled: !drag.moving; NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+    Arc { r: root.rOuter; frac: root.shownVol; colour: root.muted ? Appearance.colors.colSubtext : Appearance.colors.colPrimary }
+    Arc { r: root.rInner; frac: root.shownSun; colour: root.sunColour }
 
     // Icons at the start of each arc, numbers riding the tips.
     // A round badge on the start of each arc, holding its icon.
@@ -135,8 +139,8 @@ Item {
             color: Appearance.colors.colLayer0
         }
     }
-    Tip { r: root.rOuter; frac: root.volFrac; label: root.muted ? "×" : `${Math.round(root.vol * 100)}` }
-    Tip { r: root.rInner; frac: root.sun; label: `${Math.round(root.sun * 100)}` }
+    Tip { r: root.rOuter; frac: root.shownVol; label: root.muted ? "×" : `${Math.round(root.vol * 100)}` }
+    Tip { r: root.rInner; frac: root.shownSun; label: `${Math.round(root.sun * 100)}` }
 
     MouseArea {
         id: drag
@@ -159,12 +163,18 @@ Item {
             if (ring === "vol") root.setVol(fracAt(x, y));
             else if (ring === "sun") root.setSun(fracAt(x, y));
         }
-        onPressed: mouse => { ring = ringAt(mouse.x, mouse.y); pressAt = Qt.point(mouse.x, mouse.y); apply(mouse.x, mouse.y); }
-        onPositionChanged: mouse => { if (pressed) apply(mouse.x, mouse.y); }
+        property bool moving: false       // true once a press turns into a drag
+        onPressed: mouse => { moving = false; ring = ringAt(mouse.x, mouse.y); pressAt = Qt.point(mouse.x, mouse.y); apply(mouse.x, mouse.y); }
+        onPositionChanged: mouse => {
+            if (!pressed) return;
+            if (Math.hypot(mouse.x - pressAt.x, mouse.y - pressAt.y) > 4) moving = true;
+            apply(mouse.x, mouse.y);
+        }
         onReleased: mouse => {
             const moved = Math.hypot(mouse.x - pressAt.x, mouse.y - pressAt.y) > 4;
             if (ring === "" && !moved) root.clicked();
             ring = "";
+            moving = false;
         }
         onWheel: wheel => {
             const step = wheel.angleDelta.y > 0 ? 0.05 : -0.05;

@@ -36,10 +36,10 @@ hl.bind("SUPER + R", hl.dsp.exec_cmd(browser), { description = "App: Browser" })
 -- picker stays on Ctrl+Super+T (it can browse any folder).
 hl.bind("SUPER + SHIFT + W", global("quickshell:ashuraWallpaperPicker"), { description = "Appearance: Pick a wallpaper" })
 
--- Volume in steps of 5 (the base uses 2), up to 250%.
+-- Volume in steps of 5 (the base uses 2), up to 200%.
 unbind("XF86AudioRaiseVolume", "XF86AudioLowerVolume")
-hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+ -l 2.5"),
-    { locked = true, repeating = true, description = "Media: Volume up 5% (to 250%)" })
+hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+ -l 2.0"),
+    { locked = true, repeating = true, description = "Media: Volume up 5% (to 200%)" })
 hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"),
     { locked = true, repeating = true, description = "Media: Volume down 5%" })
 

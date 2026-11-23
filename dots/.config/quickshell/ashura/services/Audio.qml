@@ -17,8 +17,8 @@ Singleton {
     property PwNode source: Pipewire.defaultAudioSource
     readonly property real hardMaxValue: 2.00 // People keep joking about setting volume to 5172% so...
     // Ashura: one ceiling and one step for every volume control (keys, scroll,
-    // sliders), matching the keybinds' `wpctl ... 5%+ -l 2.5`.
-    readonly property real maxVolume: 2.5   // Haise: up to 250%
+    // sliders), matching the keybinds' `wpctl ... 5%+ -l 2.0`.
+    readonly property real maxVolume: 2.0   // Haise: up to 200%
     readonly property real volumeStep: 0.05
     property string audioTheme: Config.options.sounds.theme
     property real value: sink?.audio.volume ?? 0

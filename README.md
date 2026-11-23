@@ -48,7 +48,7 @@ The shell is written in QML on [Quickshell](https://quickshell.org).
 | Super+R | Browser |
 | Super+Shift+T | Translate what is on screen |
 | Ctrl+Super+Left or Right, Super+scroll, 3 finger swipe | Next or previous workspace, staying inside the current group |
-| Volume keys | Steps of 5%, up to 250% |
+| Volume keys | Steps of 5%, up to 200% |
 | Super+Escape | Session menu |
 
 ## Install
