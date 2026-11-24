@@ -3,7 +3,6 @@ import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 import qs.modules.common.functions
-import qs.modules.ashura.sidebarRight.calendar
 import qs.modules.ashura.sidebarRight.apps
 import QtQuick
 import QtQuick.Controls
@@ -16,13 +15,13 @@ import Quickshell.Services.UPower
 import Qt5Compat.GraphicalEffects
 
 // Ashura dashboard: hover the top edge (middle half) and it drops out of the
-// bar, caelestia-style,
-// with three tabs. Layout of the first tab follows caelestia's dashboard
-// (GPL-3.0, github.com/caelestia-dots/shell), minus weather:
+// bar, with four tabs:
 //
-//   Dashboard    you, the date, the calendar, CPU/RAM/swap bars, the player
-//   Performance  CPU/RAM/swap graphs, power profile, per-app usage
-//   Cockpits     devpit's repos: open, show/hide, close fully
+//   Dashboard    the 12 hour ring, you, the calendar with the agenda inside
+//                it (AgendaCalendar), the player
+//   Performance  CPU/GPU, battery as a gauge, storage, network, memory
+//   Apps         every app with a window, by memory, close or kill on hover
+//   Cockpits     devpit's repos: git line, CI, pull requests, agents
 HoverPanel {
     id: root
     namespace: "quickshell:dashboard"
@@ -130,164 +129,148 @@ HoverPanel {
     }
 
     // ------------------------------------------------------------ Dashboard
-    // The Dashboard tab (panel style DT2): the day ring clock on the left; you,
-    // the month and the selected day's items in the middle; the player on the
-    // right. Calendar marks and items are the shared Agenda list.
+    // The Dashboard tab: the 12 hour ring and you on the left, the calendar
+    // with the agenda inside it in the middle (AgendaCalendar), the player on
+    // the right.
     component DashTab: GridLayout {
         id: dash
         columns: 3
         rowSpacing: 10
         columnSpacing: 10
-        property string selectedDate: Agenda.isoDate(new Date())
 
-        // The day ring: a clock inside a ring that fills as the day goes.
+        // The 12 hour ring.
         Card {
-            Layout.row: 0; Layout.column: 0; Layout.rowSpan: 3
+            Layout.row: 0; Layout.column: 0
             Layout.preferredWidth: 250
             Layout.fillHeight: true
             DayRing { anchors.centerIn: parent }
         }
 
-        // You, with your picture beside you.
+        // You: picture and gif on top, name and uptime under them.
         Card {
-            Layout.row: 0; Layout.column: 1
-            Layout.fillWidth: true
-            Layout.preferredHeight: 104
+            Layout.row: 1; Layout.column: 0
+            Layout.preferredWidth: 250
+            Layout.preferredHeight: 150
             clip: true
-            Row {
-                anchors.left: parent.left
-                anchors.leftMargin: 14
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 16
-                Rectangle {
-                    width: 76
-                    height: 76
-                    radius: 38
-                    color: Appearance.colors.colSecondaryContainer
-                    clip: true
-                    MaterialSymbol {
-                        anchors.centerIn: parent
-                        visible: face.status !== Image.Ready
-                        text: "person"
-                        iconSize: 40
-                        color: Appearance.colors.colOnSecondaryContainer
-                    }
-                    Image {
-                        id: face
-                        anchors.fill: parent
-                        source: `file://${Directories.home.replace("file://", "")}/.face`
-                        fillMode: Image.PreserveAspectCrop
-                        visible: false
-                        cache: false
-                    }
-                    OpacityMask {
-                        anchors.fill: parent
-                        visible: face.status === Image.Ready
-                        source: face
-                        maskSource: Rectangle { width: 76; height: 76; radius: 38 }
-                    }
+            Rectangle {
+                id: faceBox
+                x: 14; y: 14
+                width: 56; height: 56; radius: 28
+                color: Appearance.colors.colSecondaryContainer
+                clip: true
+                MaterialSymbol {
+                    anchors.centerIn: parent
+                    visible: face.status !== Image.Ready
+                    text: "person"
+                    iconSize: 30
+                    color: Appearance.colors.colOnSecondaryContainer
                 }
-                Column {
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 4
-                    Label {
-                        text: `${SystemInfo.username}@${hostFile.text().trim() || "arch"}`
-                        font.pixelSize: Appearance.font.pixelSize.huge
-                    }
-                    RowLayout {
-                        spacing: 6
-                        MaterialSymbol { text: "deployed_code"; color: Appearance.colors.colPrimary; iconSize: Appearance.font.pixelSize.normal }
-                        SubLabel { text: `${SystemInfo.distroName} · Hyprland` }
-                    }
-                    RowLayout {
-                        spacing: 6
-                        MaterialSymbol { text: "timer"; color: Appearance.colors.colPrimary; iconSize: Appearance.font.pixelSize.normal }
-                        SubLabel { text: Translation.tr("up %1").arg(DateTime.uptime) }
-                    }
+                Image {
+                    id: face
+                    anchors.fill: parent
+                    source: `file://${Directories.home.replace("file://", "")}/.face`
+                    fillMode: Image.PreserveAspectCrop
+                    visible: false
+                    cache: false
+                }
+                OpacityMask {
+                    anchors.fill: parent
+                    visible: face.status === Image.Ready
+                    source: face
+                    maskSource: Rectangle { width: 56; height: 56; radius: 28 }
                 }
             }
             AnimatedImage {
-                anchors { right: parent.right; top: parent.top; bottom: parent.bottom; margins: 8 }
-                width: height
+                anchors { right: parent.right; top: parent.top; margins: 8 }
+                width: 70; height: 70
                 fillMode: Image.PreserveAspectFit
                 // Settings, Desktop: any gif; empty means the bundled one.
                 source: AshuraSettings.dashboardGif !== "" ? `file://${AshuraSettings.dashboardGif}` : Quickshell.shellPath("assets/ashura/dashboard.gif")
                 playing: root.shown && root.tab === 0
             }
-        }
-
-        // The month; days with items carry a dot, a click picks the day below.
-        Card {
-            Layout.row: 1; Layout.column: 1
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            clip: true
-            CalendarWidget {
-                id: cal
-                anchors.centerIn: parent
-                // Shrinks to fit the card rather than losing its header or last row.
-                scale: Math.min(1, (parent.height - 8) / implicitHeight, (parent.width - 8) / width)
-                onSelectedDateChanged: dash.selectedDate = selectedDate
+            Column {
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 14 }
+                spacing: 3
+                Label {
+                    width: parent.width
+                    elide: Text.ElideRight
+                    text: `${SystemInfo.username}@${hostFile.text().trim() || "arch"}`
+                    font.pixelSize: Appearance.font.pixelSize.large
+                    font.weight: Font.DemiBold
+                }
+                RowLayout {
+                    spacing: 6
+                    MaterialSymbol { text: "deployed_code"; color: Appearance.colors.colPrimary; iconSize: Appearance.font.pixelSize.small }
+                    SubLabel { text: `${SystemInfo.distroName} · Hyprland` }
+                    MaterialSymbol { text: "timer"; color: Appearance.colors.colPrimary; iconSize: Appearance.font.pixelSize.small }
+                    SubLabel { text: Translation.tr("up %1").arg(DateTime.uptime) }
+                }
             }
         }
 
-        // The picked day's items: tick, remove, add.
+        // The month with the agenda inside it.
         Card {
-            Layout.row: 2; Layout.column: 1
+            Layout.row: 0; Layout.column: 1; Layout.rowSpan: 2
             Layout.fillWidth: true
-            Layout.preferredHeight: 110
-            AgendaDay { anchors.fill: parent; anchors.margins: 10; date: dash.selectedDate }
+            Layout.fillHeight: true
+            clip: true
+            AgendaCalendar { anchors.fill: parent }
         }
 
         // The player, the full height on the right.
         Card {
-            Layout.row: 0; Layout.column: 2; Layout.rowSpan: 3
+            Layout.row: 0; Layout.column: 2; Layout.rowSpan: 2
             Layout.preferredWidth: 220
             Layout.fillHeight: true
             MiniPlayer { anchors.fill: parent; anchors.margins: 14 }
         }
     }
 
-    // A clock inside a ring that fills from the top as the day goes, with a
-    // tick for every hour (longer every six).
+    // A 12 hour clock face. The ring starts at the top (12 o'clock). From
+    // midnight to noon the morning colour grows over a grey track; at noon
+    // the full morning ring becomes the track and the afternoon colour grows
+    // over it. AM or PM shows under the time.
     component DayRing: Item {
         id: ring
         width: 214; height: 214
         readonly property date now: DateTime.clock.date
-        readonly property real dayFrac: (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) / 86400
+        readonly property bool pm: ring.now.getHours() >= 12
+        readonly property real frac: ((ring.now.getHours() % 12) * 3600 + ring.now.getMinutes() * 60 + ring.now.getSeconds()) / 43200
+        readonly property color amColor: "#5b9cf0"
+        readonly property color pmColor: Appearance.colors.colPrimary
         readonly property real r: 88
         Repeater {
-            model: 24
+            model: 12
             delegate: Item {
                 required property int index
                 anchors.centerIn: parent
                 width: ring.width; height: ring.height
-                rotation: index * 15
+                rotation: index * 30
                 Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
                     y: 1
-                    width: 2; height: index % 6 === 0 ? 9 : 5
+                    width: 2; height: index % 3 === 0 ? 9 : 5
                     radius: 1
-                    color: index % 6 === 0 ? Appearance.colors.colOnLayer2 : Appearance.colors.colSubtext
-                    opacity: index % 6 === 0 ? 0.9 : 0.6
+                    color: index % 3 === 0 ? Appearance.colors.colOnLayer2 : Appearance.colors.colSubtext
+                    opacity: index % 3 === 0 ? 0.9 : 0.6
                 }
             }
         }
         Shape {
             anchors.fill: parent
             preferredRendererType: Shape.CurveRenderer
-            ShapePath {
-                fillColor: "transparent"; strokeColor: Appearance.colors.colSecondaryContainer; strokeWidth: 12
+            ShapePath {   // the track: grey in the morning, the full morning ring after noon
+                fillColor: "transparent"; strokeColor: ring.pm ? ring.amColor : Appearance.colors.colSecondaryContainer; strokeWidth: 12
                 PathAngleArc { centerX: ring.width / 2; centerY: ring.height / 2; radiusX: ring.r; radiusY: ring.r; startAngle: 0; sweepAngle: 360 }
             }
             ShapePath {
-                fillColor: "transparent"; strokeColor: Appearance.colors.colPrimary; strokeWidth: 12; capStyle: ShapePath.RoundCap
-                PathAngleArc { centerX: ring.width / 2; centerY: ring.height / 2; radiusX: ring.r; radiusY: ring.r; startAngle: -90; sweepAngle: 360 * ring.dayFrac }
+                fillColor: "transparent"; strokeColor: ring.pm ? ring.pmColor : ring.amColor; strokeWidth: 12; capStyle: ShapePath.RoundCap
+                PathAngleArc { centerX: ring.width / 2; centerY: ring.height / 2; radiusX: ring.r; radiusY: ring.r; startAngle: -90; sweepAngle: 360 * ring.frac }
             }
         }
         Column {
             anchors.centerIn: parent
-            spacing: 2
+            spacing: 0
             Label {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: Qt.formatDateTime(ring.now, AshuraSettings.clock24h ? "HH:mm" : "h:mm")
@@ -295,89 +278,18 @@ HoverPanel {
                 font.family: Appearance.font.family.numbers
                 font.weight: Font.DemiBold
             }
+            StyledText {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: ring.pm ? "PM" : "AM"
+                font.pixelSize: Appearance.font.pixelSize.normal
+                font.weight: Font.Bold
+                font.letterSpacing: 2
+                color: ring.pm ? ring.pmColor : ring.amColor
+            }
             SubLabel {
                 anchors.horizontalCenter: parent.horizontalCenter
+                topPadding: 2
                 text: Qt.formatDateTime(ring.now, "dddd, d MMMM")
-            }
-        }
-    }
-
-    // One day's Agenda items, with a field to add one.
-    component AgendaDay: ColumnLayout {
-        id: day
-        property string date
-        readonly property var items: Agenda.itemsOn(day.date)
-        spacing: 4
-        RowLayout {
-            Layout.fillWidth: true
-            Label {
-                text: day.date === Agenda.isoDate(new Date()) ? Translation.tr("Today")
-                    : Qt.formatDate(new Date(day.date + "T12:00:00"), "ddd d MMM")
-                font.weight: Font.DemiBold
-            }
-            SubLabel {
-                Layout.fillWidth: true
-                text: day.items.length ? Translation.tr("%1 item(s)").arg(day.items.length) : Translation.tr("nothing due")
-            }
-        }
-        ListView {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            clip: true
-            spacing: 2
-            model: day.items
-            delegate: RowLayout {
-                required property var modelData
-                width: ListView.view.width
-                spacing: 6
-                RippleButton {
-                    implicitWidth: 22; implicitHeight: 22
-                    buttonRadius: 11
-                    onClicked: Agenda.toggle(modelData.id)
-                    contentItem: MaterialSymbol {
-                        anchors.centerIn: parent
-                        text: modelData.done ? "check_circle" : "radio_button_unchecked"
-                        fill: modelData.done ? 1 : 0
-                        iconSize: 18
-                        color: modelData.done ? Appearance.colors.colSubtext : Appearance.colors.colPrimary
-                    }
-                }
-                StyledText {
-                    Layout.fillWidth: true
-                    elide: Text.ElideRight
-                    text: modelData.title
-                    font.strikeout: modelData.done
-                    color: modelData.done ? Appearance.colors.colSubtext : Appearance.colors.colOnLayer2
-                }
-                RippleButton {
-                    implicitWidth: 22; implicitHeight: 22
-                    buttonRadius: 11
-                    onClicked: Agenda.remove(modelData.id)
-                    contentItem: MaterialSymbol { anchors.centerIn: parent; text: "close"; iconSize: 16; color: Appearance.colors.colSubtext }
-                }
-            }
-        }
-        Rectangle {
-            Layout.fillWidth: true
-            implicitHeight: 28
-            radius: 14
-            color: Appearance.colors.colLayer1
-            TextInput {
-                id: addField
-                anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
-                verticalAlignment: TextInput.AlignVCenter
-                font.pixelSize: Appearance.font.pixelSize.small
-                font.family: Appearance.font.family.main
-                color: Appearance.colors.colOnLayer1
-                clip: true
-                onAccepted: { Agenda.add(day.date, text); text = ""; }
-                StyledText {
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: addField.text === ""
-                    text: Translation.tr("Add a deadline or to-do, Enter to save")
-                    font.pixelSize: Appearance.font.pixelSize.small
-                    color: Appearance.colors.colSubtext
-                }
             }
         }
     }
