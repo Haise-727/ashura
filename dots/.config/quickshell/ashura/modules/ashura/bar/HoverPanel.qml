@@ -45,12 +45,20 @@ Scope {
     property bool triggerHovered: false
     property bool armed: false                // hover has lasted openDelay
     readonly property bool wanted: root.targetHovered || root.triggerHovered
-    readonly property bool shown: !GlobalStates.screenLocked
-        && (root.pinned || (root.holdHovered && card.reveal > 0) || root.panelHovered || grace.running || (root.wanted && root.armed))
+    // Open is a state, not a formula: only the trigger (or pinning) opens the
+    // panel. Hover on the panel or on the bar's middle only keeps an OPEN
+    // panel open. While it slides shut it takes no input, so a pointer that
+    // crosses it again does not bring it back and reaches what is beneath.
+    property bool open: false
+    readonly property bool shown: !GlobalStates.screenLocked && root.open
     readonly property real band: root.attached ? Appearance.sizes.barHeight : 0
     readonly property real fillet: root.attached ? Appearance.rounding.screenRounding : 0
     readonly property var screen: root.anchorItem?.QsWindow?.window?.screen ?? Quickshell.screens[0]
 
+    function update() {
+        if (root.pinned || (root.wanted && root.armed)) root.open = true;
+        else if (root.open && !(root.panelHovered || root.holdHovered || grace.running)) root.open = false;
+    }
     onWantedChanged: {
         if (wanted) {
             if (root.openDelay > 0) delay.restart(); else root.armed = true;
@@ -59,11 +67,19 @@ Scope {
             if (root.armed) grace.restart();
             root.armed = false;
         }
+        root.update();
     }
-    onPanelHoveredChanged: if (!panelHovered) { grace.restart(); root.pinned = false; }
+    onArmedChanged: root.update()
+    onPinnedChanged: root.update()
+    onHoldHoveredChanged: root.update()
+    onPanelHoveredChanged: {
+        if (!panelHovered) { grace.restart(); root.pinned = false; }
+        root.update();
+    }
+    onOpenChanged: if (!open) root.panelHovered = false
 
     Timer { id: delay; interval: root.openDelay; onTriggered: root.armed = root.wanted }
-    Timer { id: grace; interval: root.graceMs }
+    Timer { id: grace; interval: root.graceMs; onTriggered: root.update() }
 
     // The top-edge trigger strip.
     Loader {
@@ -117,7 +133,7 @@ Scope {
                 return Math.max(0, Math.min(w - win.implicitWidth, x));
             }
         }
-        mask: Region { item: (root.shown || card.reveal > 0) ? inputArea : noInput }
+        mask: Region { item: root.shown ? inputArea : noInput }
         // Input only on the card and its corners, not on the band over the bar.
         Item {
             id: inputArea
@@ -138,7 +154,7 @@ Scope {
             y: root.attached ? 0 : Appearance.sizes.elevationMargin
             width: root.contentWidth + root.fillet * 2
             height: root.band + root.contentHeight
-            HoverHandler { onHoveredChanged: root.panelHovered = hovered }
+            HoverHandler { onHoveredChanged: root.panelHovered = hovered && root.open }
 
             // Attached: the card slides down out of the bar; detached: it drops
             // a little and fades in.
@@ -179,20 +195,22 @@ Scope {
             }
 
             // Attached: inverted corners joining the card to the bar, the way
-            // the bar joins the screen edges.
+            // the bar joins the screen edges. They shrink with the visible
+            // part of the card, so no ramps are left behind while it closes.
+            readonly property real filletNow: Math.min(root.fillet, card.reveal * root.contentHeight)
             RoundCorner {
-                visible: root.attached && card.reveal > 0
-                x: 0
+                visible: root.attached && hoverArea.filletNow > 0.5
+                x: root.fillet - hoverArea.filletNow
                 y: root.band
-                implicitSize: root.fillet
+                implicitSize: hoverArea.filletNow
                 color: Appearance.colors.colLayer0
                 corner: RoundCorner.CornerEnum.TopRight
             }
             RoundCorner {
-                visible: root.attached && card.reveal > 0
+                visible: root.attached && hoverArea.filletNow > 0.5
                 x: root.fillet + root.contentWidth
                 y: root.band
-                implicitSize: root.fillet
+                implicitSize: hoverArea.filletNow
                 color: Appearance.colors.colLayer0
                 corner: RoundCorner.CornerEnum.TopLeft
             }
