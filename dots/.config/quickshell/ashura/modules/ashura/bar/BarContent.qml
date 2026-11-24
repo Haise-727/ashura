@@ -287,9 +287,9 @@ Item { // Bar content region
                             id: notificationUnreadCount
                         }
                     }
-                    MaterialSymbol {
-                        text: Network.materialSymbol
-                        iconSize: Appearance.font.pixelSize.larger
+                    // The network icon with its traffic as sliding chevrons.
+                    NetworkIndicator {
+                        Layout.alignment: Qt.AlignVCenter
                         color: rightSidebarButton.colText
                     }
                     // Ashura: volume in place of the Bluetooth icon (Bluetooth is in
