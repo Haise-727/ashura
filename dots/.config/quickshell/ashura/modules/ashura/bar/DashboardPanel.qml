@@ -103,10 +103,28 @@ HoverPanel {
             }
         }
 
+        // A tab change slides the new tab in from the side you moved towards
+        // while it fades up: one short motion.
         StackLayout {
+            id: tabStack
             Layout.fillWidth: true
             Layout.fillHeight: true
             currentIndex: root.tab
+            property int shownTab: 0
+            property real slide: 0
+            transform: Translate { x: tabStack.slide }
+            onCurrentIndexChanged: {
+                swapAnim.stop();
+                tabStack.slide = (currentIndex > tabStack.shownTab ? 1 : -1) * 16;
+                tabStack.opacity = 0.2;
+                tabStack.shownTab = currentIndex;
+                swapAnim.start();
+            }
+            ParallelAnimation {
+                id: swapAnim
+                NumberAnimation { target: tabStack; property: "slide"; to: 0; duration: 220; easing.type: Easing.OutCubic }
+                NumberAnimation { target: tabStack; property: "opacity"; to: 1; duration: 220; easing.type: Easing.OutCubic }
+            }
 
             DashTab {}
             PerformanceTab {}
@@ -146,11 +164,11 @@ HoverPanel {
             DayRing { anchors.centerIn: parent }
         }
 
-        // You, with your picture beside you.
+        // You, with your picture beside you (about 28% of the tab's height).
         Card {
             Layout.row: 0; Layout.column: 1
             Layout.fillWidth: true
-            Layout.preferredHeight: 104
+            Layout.preferredHeight: 134
             clip: true
             Row {
                 anchors.left: parent.left
@@ -158,16 +176,16 @@ HoverPanel {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 16
                 Rectangle {
-                    width: 76
-                    height: 76
-                    radius: 38
+                    width: 104
+                    height: 104
+                    radius: 52
                     color: Appearance.colors.colSecondaryContainer
                     clip: true
                     MaterialSymbol {
                         anchors.centerIn: parent
                         visible: face.status !== Image.Ready
                         text: "person"
-                        iconSize: 40
+                        iconSize: 52
                         color: Appearance.colors.colOnSecondaryContainer
                     }
                     Image {
@@ -182,7 +200,7 @@ HoverPanel {
                         anchors.fill: parent
                         visible: face.status === Image.Ready
                         source: face
-                        maskSource: Rectangle { width: 76; height: 76; radius: 38 }
+                        maskSource: Rectangle { width: 104; height: 104; radius: 52 }
                     }
                 }
                 Column {
@@ -204,9 +222,10 @@ HoverPanel {
                     }
                 }
             }
+            // The gif sits small in the top right corner, clear of the name.
             AnimatedImage {
-                anchors { right: parent.right; top: parent.top; bottom: parent.bottom; margins: 8 }
-                width: height
+                anchors { right: parent.right; top: parent.top; margins: 6 }
+                width: 64; height: 64
                 fillMode: Image.PreserveAspectFit
                 // Settings, Desktop: any gif; empty means the bundled one.
                 source: AshuraSettings.dashboardGif !== "" ? `file://${AshuraSettings.dashboardGif}` : Quickshell.shellPath("assets/ashura/dashboard.gif")
@@ -242,9 +261,11 @@ HoverPanel {
         readonly property date now: DateTime.clock.date
         readonly property bool pm: ring.now.getHours() >= 12
         readonly property real frac: ((ring.now.getHours() % 12) * 3600 + ring.now.getMinutes() * 60 + ring.now.getSeconds()) / 43200
-        // Both from the wallpaper's palette: tertiary for the morning, the
-        // accent for the afternoon.
-        readonly property color amColor: Appearance.colors.colTertiary
+        // Both from the wallpaper's palette: the afternoon is the accent, the
+        // morning the accent's opposite hue, so the two always contrast.
+        readonly property color pmColor0: Appearance.colors.colPrimary
+        readonly property color amColor: Qt.hsla(((pmColor0.hslHue < 0 ? 0.6 : pmColor0.hslHue) + 0.5) % 1,
+            Math.max(0.5, pmColor0.hslSaturation), Math.min(0.7, Math.max(0.45, pmColor0.hslLightness)), 1)
         readonly property color pmColor: Appearance.colors.colPrimary
         readonly property real r: 88
         Repeater {
