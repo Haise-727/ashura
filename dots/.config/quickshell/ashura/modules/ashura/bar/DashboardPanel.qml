@@ -260,7 +260,7 @@ HoverPanel {
             anchors.fill: parent
             preferredRendererType: Shape.CurveRenderer
             ShapePath {   // the track: grey in the morning, the full morning ring after noon
-                fillColor: "transparent"; strokeColor: ring.pm ? ring.amColor : Appearance.colors.colSecondaryContainer; strokeWidth: 12
+                fillColor: "transparent"; strokeColor: ring.pm ? ring.amColor : Appearance.colors.colOutlineVariant; strokeWidth: 12
                 PathAngleArc { centerX: ring.width / 2; centerY: ring.height / 2; radiusX: ring.r; radiusY: ring.r; startAngle: 0; sweepAngle: 360 }
             }
             ShapePath {
