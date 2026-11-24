@@ -171,7 +171,9 @@ Scope {
                 Rectangle {
                     id: card
                     property real reveal: root.shown ? 1 : 0
-                    Behavior on reveal { NumberAnimation { duration: root.attached ? 260 : 220; easing.type: Easing.OutQuint } }
+                    // Opening eases out; closing ends crisply (an OutQuint
+                    // tail left the card and its corners hanging for a while).
+                    Behavior on reveal { NumberAnimation { duration: root.attached ? 260 : 220; easing.type: root.shown ? Easing.OutQuint : Easing.InOutCubic } }
                     width: root.contentWidth
                     height: root.contentHeight
                     y: root.attached ? -(1 - reveal) * height : -(1 - reveal) * 16
@@ -197,7 +199,9 @@ Scope {
             // Attached: inverted corners joining the card to the bar, the way
             // the bar joins the screen edges. They shrink with the visible
             // part of the card, so no ramps are left behind while it closes.
-            readonly property real filletNow: Math.min(root.fillet, card.reveal * root.contentHeight)
+            // Gone before the card is: they shrink while the visible card
+            // goes from two fillets tall to one.
+            readonly property real filletNow: root.fillet * Math.max(0, Math.min(1, (card.reveal * root.contentHeight - root.fillet) / root.fillet))
             RoundCorner {
                 visible: root.attached && hoverArea.filletNow > 0.5
                 x: root.fillet - hoverArea.filletNow
