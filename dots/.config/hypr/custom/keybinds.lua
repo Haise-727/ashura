@@ -46,6 +46,8 @@ hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO
 -- No scratchpad (the base's special workspace on Super+S). Haise's "special"
 -- workspace is ws 10, the launch dashboard.
 unbind("SUPER + S", "CTRL + SUPER + S", "SUPER + mouse:275")
+-- Super+S is the screenshot tool (Super+Shift+S still works too).
+hl.bind("SUPER + S", hl.dsp.global("quickshell:regionScreenshot"), { description = "Utilities: Screenshot" })
 
 -- Super+D is the cockpit (custom/cockpit.lua). Maximize moves to
 -- Super+Shift+D.
