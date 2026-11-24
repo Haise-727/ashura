@@ -37,11 +37,34 @@ Toolbar {
 
     // Ashura: one toggle. On, the shot goes to Google Lens; off, it is
     // copied. Hidden for text recognition and recording.
-    ToolbarTabButton {
+    // Its own on look: filled with the accent when on (a lone tab button has
+    // no tab bar to draw the highlight behind it).
+    RippleButton {
+        id: lensToggle
+        readonly property bool on: root.action === RegionSelection.SnipAction.Search
         visible: root.action === RegionSelection.SnipAction.Copy || root.action === RegionSelection.SnipAction.Search
-        current: root.action === RegionSelection.SnipAction.Search
-        text: Translation.tr("Lens")
-        materialSymbol: "image_search"
-        onClicked: root.action = current ? RegionSelection.SnipAction.Copy : RegionSelection.SnipAction.Search
+        implicitHeight: 40
+        implicitWidth: lensRow.implicitWidth + 20
+        buttonRadius: height / 2
+        colBackground: on ? Appearance.colors.colPrimary : ColorUtils.transparentize(Appearance.colors.colSurfaceContainer)
+        colBackgroundHover: on ? Appearance.colors.colPrimaryHover : ColorUtils.transparentize(Appearance.colors.colOnSurface, 0.95)
+        onClicked: root.action = on ? RegionSelection.SnipAction.Copy : RegionSelection.SnipAction.Search
+        contentItem: Row {
+            id: lensRow
+            anchors.centerIn: parent
+            spacing: 6
+            MaterialSymbol {
+                anchors.verticalCenter: parent.verticalCenter
+                iconSize: 22
+                text: "image_search"
+                fill: lensToggle.on ? 1 : 0
+                color: lensToggle.on ? Appearance.colors.colOnPrimary : Appearance.colors.colOnSurface
+            }
+            StyledText {
+                anchors.verticalCenter: parent.verticalCenter
+                text: Translation.tr("Lens")
+                color: lensToggle.on ? Appearance.colors.colOnPrimary : Appearance.colors.colOnSurface
+            }
+        }
     }
 }
