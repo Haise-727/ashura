@@ -34,4 +34,20 @@ Toolbar {
             root.selectionMode = currentIndex === 0 ? RegionSelection.SelectionMode.RectCorners : RegionSelection.SelectionMode.Circle;
         }
     }
+
+    // Ashura: what the shot is for. Copy (and save) it, or send it to
+    // Google Lens. Hidden for text recognition and recording.
+    ToolbarTabBar {
+        id: actionBar
+        visible: root.action === RegionSelection.SnipAction.Copy || root.action === RegionSelection.SnipAction.Search
+        tabButtonList: [
+            {"icon": "content_copy", "name": Translation.tr("Copy")},
+            {"icon": "image_search", "name": Translation.tr("Lens")}
+        ]
+        currentIndex: root.action === RegionSelection.SnipAction.Search ? 1 : 0
+        onCurrentIndexChanged: {
+            if (!actionBar.visible) return;
+            root.action = currentIndex === 1 ? RegionSelection.SnipAction.Search : RegionSelection.SnipAction.Copy;
+        }
+    }
 }
