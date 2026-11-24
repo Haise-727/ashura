@@ -157,7 +157,7 @@ Item {
             // Month view: the weeks share all the height. Day view: the kept
             // week is a fixed strip and the rest goes to the items.
             readonly property real monthCellH: Math.max(36, (cal.height - 24 - header.height - weekNames.height - 3 * 6) / cal.rowCount)
-            readonly property real dayCellH: 54
+            readonly property real dayCellH: 44
             Repeater {
                 model: 6
                 delegate: Item {

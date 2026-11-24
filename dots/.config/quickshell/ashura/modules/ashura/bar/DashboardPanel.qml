@@ -129,8 +129,8 @@ HoverPanel {
     }
 
     // ------------------------------------------------------------ Dashboard
-    // The Dashboard tab: the 12 hour ring and you on the left, the calendar
-    // with the agenda inside it in the middle (AgendaCalendar), the player on
+    // The Dashboard tab: the 12 hour ring on the left; you, then the calendar
+    // with the agenda inside it (AgendaCalendar) in the middle; the player on
     // the right.
     component DashTab: GridLayout {
         id: dash
@@ -138,79 +138,85 @@ HoverPanel {
         rowSpacing: 10
         columnSpacing: 10
 
-        // The 12 hour ring.
+        // The 12 hour ring, the full height on the left.
         Card {
-            Layout.row: 0; Layout.column: 0
+            Layout.row: 0; Layout.column: 0; Layout.rowSpan: 2
             Layout.preferredWidth: 250
             Layout.fillHeight: true
             DayRing { anchors.centerIn: parent }
         }
 
-        // You: picture and gif on top, name and uptime under them.
+        // You, with your picture beside you.
         Card {
-            Layout.row: 1; Layout.column: 0
-            Layout.preferredWidth: 250
-            Layout.preferredHeight: 150
+            Layout.row: 0; Layout.column: 1
+            Layout.fillWidth: true
+            Layout.preferredHeight: 104
             clip: true
-            Rectangle {
-                id: faceBox
-                x: 14; y: 14
-                width: 56; height: 56; radius: 28
-                color: Appearance.colors.colSecondaryContainer
-                clip: true
-                MaterialSymbol {
-                    anchors.centerIn: parent
-                    visible: face.status !== Image.Ready
-                    text: "person"
-                    iconSize: 30
-                    color: Appearance.colors.colOnSecondaryContainer
+            Row {
+                anchors.left: parent.left
+                anchors.leftMargin: 14
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 16
+                Rectangle {
+                    width: 76
+                    height: 76
+                    radius: 38
+                    color: Appearance.colors.colSecondaryContainer
+                    clip: true
+                    MaterialSymbol {
+                        anchors.centerIn: parent
+                        visible: face.status !== Image.Ready
+                        text: "person"
+                        iconSize: 40
+                        color: Appearance.colors.colOnSecondaryContainer
+                    }
+                    Image {
+                        id: face
+                        anchors.fill: parent
+                        source: `file://${Directories.home.replace("file://", "")}/.face`
+                        fillMode: Image.PreserveAspectCrop
+                        visible: false
+                        cache: false
+                    }
+                    OpacityMask {
+                        anchors.fill: parent
+                        visible: face.status === Image.Ready
+                        source: face
+                        maskSource: Rectangle { width: 76; height: 76; radius: 38 }
+                    }
                 }
-                Image {
-                    id: face
-                    anchors.fill: parent
-                    source: `file://${Directories.home.replace("file://", "")}/.face`
-                    fillMode: Image.PreserveAspectCrop
-                    visible: false
-                    cache: false
-                }
-                OpacityMask {
-                    anchors.fill: parent
-                    visible: face.status === Image.Ready
-                    source: face
-                    maskSource: Rectangle { width: 56; height: 56; radius: 28 }
+                Column {
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4
+                    Label {
+                        text: `${SystemInfo.username}@${hostFile.text().trim() || "arch"}`
+                        font.pixelSize: Appearance.font.pixelSize.huge
+                    }
+                    RowLayout {
+                        spacing: 6
+                        MaterialSymbol { text: "deployed_code"; color: Appearance.colors.colPrimary; iconSize: Appearance.font.pixelSize.normal }
+                        SubLabel { text: `${SystemInfo.distroName} · Hyprland` }
+                    }
+                    RowLayout {
+                        spacing: 6
+                        MaterialSymbol { text: "timer"; color: Appearance.colors.colPrimary; iconSize: Appearance.font.pixelSize.normal }
+                        SubLabel { text: Translation.tr("up %1").arg(DateTime.uptime) }
+                    }
                 }
             }
             AnimatedImage {
-                anchors { right: parent.right; top: parent.top; margins: 8 }
-                width: 70; height: 70
+                anchors { right: parent.right; top: parent.top; bottom: parent.bottom; margins: 8 }
+                width: height
                 fillMode: Image.PreserveAspectFit
                 // Settings, Desktop: any gif; empty means the bundled one.
                 source: AshuraSettings.dashboardGif !== "" ? `file://${AshuraSettings.dashboardGif}` : Quickshell.shellPath("assets/ashura/dashboard.gif")
                 playing: root.shown && root.tab === 0
             }
-            Column {
-                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 14 }
-                spacing: 3
-                Label {
-                    width: parent.width
-                    elide: Text.ElideRight
-                    text: `${SystemInfo.username}@${hostFile.text().trim() || "arch"}`
-                    font.pixelSize: Appearance.font.pixelSize.large
-                    font.weight: Font.DemiBold
-                }
-                RowLayout {
-                    spacing: 6
-                    MaterialSymbol { text: "deployed_code"; color: Appearance.colors.colPrimary; iconSize: Appearance.font.pixelSize.small }
-                    SubLabel { text: `${SystemInfo.distroName} · Hyprland` }
-                    MaterialSymbol { text: "timer"; color: Appearance.colors.colPrimary; iconSize: Appearance.font.pixelSize.small }
-                    SubLabel { text: Translation.tr("up %1").arg(DateTime.uptime) }
-                }
-            }
         }
 
-        // The month with the agenda inside it.
+        // The month with the agenda inside it (AgendaCalendar).
         Card {
-            Layout.row: 0; Layout.column: 1; Layout.rowSpan: 2
+            Layout.row: 1; Layout.column: 1
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
@@ -236,7 +242,9 @@ HoverPanel {
         readonly property date now: DateTime.clock.date
         readonly property bool pm: ring.now.getHours() >= 12
         readonly property real frac: ((ring.now.getHours() % 12) * 3600 + ring.now.getMinutes() * 60 + ring.now.getSeconds()) / 43200
-        readonly property color amColor: "#5b9cf0"
+        // Both from the wallpaper's palette: tertiary for the morning, the
+        // accent for the afternoon.
+        readonly property color amColor: Appearance.colors.colTertiary
         readonly property color pmColor: Appearance.colors.colPrimary
         readonly property real r: 88
         Repeater {
@@ -273,7 +281,9 @@ HoverPanel {
             spacing: 0
             Label {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: Qt.formatDateTime(ring.now, AshuraSettings.clock24h ? "HH:mm" : "h:mm")
+                // A 12 hour face: AM/PM is under it. (Qt's "h" stays 0 to 23
+                // unless the format itself has AP, so the hour is worked out.)
+                text: `${(ring.now.getHours() + 11) % 12 + 1}:${String(ring.now.getMinutes()).padStart(2, "0")}`
                 font.pixelSize: 44
                 font.family: Appearance.font.family.numbers
                 font.weight: Font.DemiBold
