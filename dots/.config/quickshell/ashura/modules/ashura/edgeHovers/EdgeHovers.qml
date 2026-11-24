@@ -22,7 +22,9 @@ import Quickshell.Wayland
 //           translate); an icon opens the sidebar on that tab. Click -> sidebar.
 //   bottom  hover -> the music card; it stays while the pointer is on it.
 //
-// The strips are on the Top layer, so fullscreen windows cover them.
+// The left strip is on the Top layer, so fullscreen windows cover it; the right
+// and bottom strips are on Overlay and still answer over a fullscreen window.
+// (The top edge's dashboard stays quiet in fullscreen: HoverPanel.)
 // IPC: `qs -c ashura ipc call edgeHovers toggle` (all strips on/off).
 Scope {
     id: root
@@ -124,6 +126,7 @@ Scope {
         property alias hovered: area.containsMouse
         property bool edgeOn: true               // this edge's switch in Settings
         property bool showHighlight: true        // the growing line; off where a panel already answers the hover
+        property bool overFullscreen: false      // Overlay layer: still reachable over a fullscreen window
         signal clicked()
         screen: screenRef
         readonly property bool vertical: side === "left" || side === "right"
@@ -133,7 +136,7 @@ Scope {
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
         WlrLayershell.namespace: `quickshell:edgeHover:${side}`
-        WlrLayershell.layer: WlrLayer.Top
+        WlrLayershell.layer: overFullscreen ? WlrLayer.Overlay : WlrLayer.Top
         visible: root.enabled && edgeOn
 
         MouseArea {
@@ -166,6 +169,7 @@ Scope {
             // ---- right
             Strip {
                 side: "right"; screenRef: perScreen.modelData; edgeOn: AshuraSettings.edgeRight
+                overFullscreen: true                     // the dial works over a fullscreen video too
                 onHoveredChanged: root.rightEdgeHovered = hovered
                 onClicked: root.openSidebar("right")
             }
@@ -350,6 +354,7 @@ Scope {
             // ---- bottom
             Strip {
                 side: "bottom"; screenRef: perScreen.modelData; edgeOn: AshuraSettings.edgeBottom
+                overFullscreen: true                     // so does the music bar
                 onHoveredChanged: root.bottomEdgeHovered = hovered
             }
             // The music bar: hangs from the bottom edge, joined to it by
