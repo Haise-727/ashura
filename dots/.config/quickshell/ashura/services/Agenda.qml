@@ -13,8 +13,10 @@ import Quickshell.Io
  *
  * ~/.config/ashura/agenda.json:
  *   { "items": [ { "id": "k3x9...", "date": "2026-11-24", "title": "...",
- *                  "done": false, "kind": "deadline" } ] }
+ *                  "done": false, "kind": "deadline", "time": "17:00" } ] }
  * `date` is local, YYYY-MM-DD. `kind` is free text ("deadline", "todo", ...).
+ * `time` (HH:MM) is optional; an item without one is due by the end of its day.
+ * scripts/ashura/ashura-agenda edits the same file from a terminal.
  */
 Singleton {
     id: root
@@ -36,12 +38,18 @@ Singleton {
         const p = n => String(n).padStart(2, "0");
         return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
     }
-    function itemsOn(date) { return adapter.items.filter(it => it.date === date); }
-    function add(date, title, kind) {
+    // Timed items first, by time; untimed after, in the order they were added.
+    function itemsOn(date) {
+        return adapter.items.filter(it => it.date === date)
+            .sort((a, b) => (a.time || "99") < (b.time || "99") ? -1 : (a.time || "99") > (b.time || "99") ? 1 : 0);
+    }
+    function add(date, title, kind, time) {
         const t = String(title || "").trim();
         if (!date || !t) return;
         const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-        adapter.items = adapter.items.concat([{ id: id, date: date, title: t, done: false, kind: kind || "deadline" }]);
+        const it = { id: id, date: date, title: t, done: false, kind: kind || "deadline" };
+        if (time) it.time = time;
+        adapter.items = adapter.items.concat([it]);
     }
     function toggle(id) { adapter.items = adapter.items.map(it => it.id === id ? Object.assign({}, it, { done: !it.done }) : it); }
     function remove(id) { adapter.items = adapter.items.filter(it => it.id !== id); }
