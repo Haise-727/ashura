@@ -4,6 +4,7 @@ import qs.modules.common.widgets
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Hyprland
 
 // Ashura: a panel that drops out of the bar, caelestia-style. Unlike
 // StyledPopup it stays open while the pointer is on the panel too, so its
@@ -71,7 +72,13 @@ Scope {
     }
     onArmedChanged: root.update()
     onPinnedChanged: root.update()
-    onHoldHoveredChanged: root.update()
+    // Leaving the bar's middle (on the way down from the top edge into the
+    // panel) gets the same grace as leaving the edge strip; without it a slow
+    // pointer crossing the gap under the workspace pills closed the panel.
+    onHoldHoveredChanged: {
+        if (!holdHovered) grace.restart();
+        root.update();
+    }
     onPanelHoveredChanged: {
         if (!panelHovered) { grace.restart(); root.pinned = false; }
         root.update();
@@ -81,9 +88,13 @@ Scope {
     Timer { id: delay; interval: root.openDelay; onTriggered: root.armed = root.wanted }
     Timer { id: grace; interval: root.graceMs; onTriggered: root.update() }
 
-    // The top-edge trigger strip.
+    // Fullscreen on this screen (a video, a game): the top edge stays quiet.
+    readonly property bool fullscreenHere: Hyprland.monitorFor(root.screen)?.activeWorkspace?.hasFullscreen ?? false
+    onFullscreenHereChanged: if (fullscreenHere) root.triggerHovered = false
+
+    // The top-edge trigger strip (not while something is fullscreen).
     Loader {
-        active: root.triggerFraction > 0
+        active: root.triggerFraction > 0 && !root.fullscreenHere
         sourceComponent: PanelWindow {
             screen: root.screen
             anchors { top: true; left: true }
