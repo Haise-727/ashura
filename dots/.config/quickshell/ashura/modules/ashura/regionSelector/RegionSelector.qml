@@ -13,6 +13,9 @@ Scope {
         GlobalStates.regionSelectorOpen = false
     }
 
+    // The polaroid that drops in after a copy.
+    ShotCard {}
+
     property var action: RegionSelection.SnipAction.Copy
     property var selectionMode: RegionSelection.SelectionMode.RectCorners
     

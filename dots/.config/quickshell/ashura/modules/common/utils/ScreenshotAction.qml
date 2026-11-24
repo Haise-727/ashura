@@ -40,12 +40,16 @@ Singleton {
         const uploadAndGetUrl = (filePath) => {
             return `curl -sF files[]=@'${StringUtils.shellSingleQuoteEscape(filePath)}' ${root.fileUploadApiEndpoint} | jq -r '.files[0].url'`
         }
+        // Ashura: the polaroid card after a copy (regionSelector/ShotCard.qml).
+        const lastShot = `${Directories.screenshotTemp}/last-shot.png`
+        const showCard = `qs -p '${StringUtils.shellSingleQuoteEscape(Quickshell.shellPath("shell.qml"))}' ipc call shotCard present `
         const annotationCommand = `${Config.options.regionSelector.annotation.useSatty ? "satty" : "swappy"} -f -`;
         switch (action) {
             case ScreenshotAction.Action.Copy:
                 if (saveDir === "") {
-                    // not saving the screenshot, just copy to clipboard
-                    return ["bash", "-c", `${cropToStdout} | wl-copy && ${cleanup}`]
+                    // not saving the screenshot, just copy to clipboard. Ashura:
+                    // keep the crop as last-shot.png for the card (ShotCard).
+                    return ["bash", "-c", `${cropToStdout} | tee '${StringUtils.shellSingleQuoteEscape(lastShot)}' | wl-copy && ${cleanup} && ${showCard}'${StringUtils.shellSingleQuoteEscape(lastShot)}'`]
                     break;
                 }
                 return [
@@ -54,7 +58,7 @@ Singleton {
                     saveFileName="screenshot-$(date '+%Y-%m-%d_%H.%M.%S').png" && \
                     savePath="${saveDir}/$saveFileName" && \
                     ${cropToStdout} | tee >(wl-copy) > "$savePath" && \
-                    ${cleanup}`
+                    ${cleanup} && ${showCard}"$savePath"`
                 ]
 
                 break;
