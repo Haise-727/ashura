@@ -1,6 +1,7 @@
 import qs.modules.common
 import qs.modules.common.widgets
 import QtQuick
+import Qt5Compat.GraphicalEffects
 
 Item {
     id: root
@@ -15,23 +16,32 @@ Item {
 
     property bool breathingBorderOnly: false
 
-    // Overlay to darken screen
-    // Base dark overlay around region
+    // The dim over everything but the selection, cut out with the
+    // selection's own rounding (a mask, as caelestia does).
     Rectangle {
         id: darkenOverlay
         z: 1
+        anchors.fill: parent
         visible: !root.breathingBorderOnly
-        anchors {
-            left: parent.left
-            top: parent.top
-            leftMargin: root.regionX - darkenOverlay.border.width
-            topMargin: root.regionY - darkenOverlay.border.width
+        color: root.overlayColor
+        layer.enabled: true
+        layer.effect: OpacityMask {
+            maskSource: holeWrap
+            invert: true
         }
-        width: root.regionWidth + darkenOverlay.border.width * 2
-        height: root.regionHeight + darkenOverlay.border.width * 2
-        color: "transparent"
-        border.color: root.overlayColor
-        border.width: Math.max(root.width, root.height)
+    }
+    Item {
+        id: holeWrap
+        anchors.fill: parent
+        visible: false
+        layer.enabled: true
+        Rectangle {
+            x: root.regionX
+            y: root.regionY
+            width: Math.max(0, root.regionWidth)
+            height: Math.max(0, root.regionHeight)
+            radius: root.cornerRadius
+        }
     }
 
     // The selection: a solid accent outline round the clear area.

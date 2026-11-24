@@ -35,19 +35,13 @@ Toolbar {
         }
     }
 
-    // Ashura: what the shot is for. Copy (and save) it, or send it to
-    // Google Lens. Hidden for text recognition and recording.
-    ToolbarTabBar {
-        id: actionBar
+    // Ashura: one toggle. On, the shot goes to Google Lens; off, it is
+    // copied. Hidden for text recognition and recording.
+    ToolbarTabButton {
         visible: root.action === RegionSelection.SnipAction.Copy || root.action === RegionSelection.SnipAction.Search
-        tabButtonList: [
-            {"icon": "content_copy", "name": Translation.tr("Copy")},
-            {"icon": "image_search", "name": Translation.tr("Lens")}
-        ]
-        currentIndex: root.action === RegionSelection.SnipAction.Search ? 1 : 0
-        onCurrentIndexChanged: {
-            if (!actionBar.visible) return;
-            root.action = currentIndex === 1 ? RegionSelection.SnipAction.Search : RegionSelection.SnipAction.Copy;
-        }
+        current: root.action === RegionSelection.SnipAction.Search
+        text: Translation.tr("Lens")
+        materialSymbol: "image_search"
+        onClicked: root.action = current ? RegionSelection.SnipAction.Copy : RegionSelection.SnipAction.Search
     }
 }

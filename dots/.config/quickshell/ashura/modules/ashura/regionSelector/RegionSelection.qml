@@ -184,19 +184,43 @@ PanelWindow {
         root.targetedRegionHeight = 0;
     }
 
-    // What the overlay shows (Ashura): while dragging, the dragged area; before
-    // that, the window (or layer, or image) under the pointer, so the clear
-    // cut-out wraps it and glides from one to the next. Nothing under the
-    // pointer: a point at the pointer (the whole screen stays dim).
+    // What the overlay shows (Ashura, after caelestia's area picker): while
+    // dragging, the dragged area; before that, the window (or layer, or
+    // image) under the pointer, so the clear cut-out wraps it and glides from
+    // one to the next. Nothing under the pointer: the whole screen, which is
+    // also what a click there takes.
     readonly property bool dragShown: root.dragging && root.draggedAway
-    property real shownX: root.dragShown ? root.regionX : root.targetedRegionValid() ? root.targetedRegionX : mouseArea.mouseX
-    property real shownY: root.dragShown ? root.regionY : root.targetedRegionValid() ? root.targetedRegionY : mouseArea.mouseY
-    property real shownWidth: root.dragShown ? root.regionWidth : root.targetedRegionValid() ? root.targetedRegionWidth : 0
-    property real shownHeight: root.dragShown ? root.regionHeight : root.targetedRegionValid() ? root.targetedRegionHeight : 0
-    Behavior on shownX { enabled: !root.dragShown; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-    Behavior on shownY { enabled: !root.dragShown; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-    Behavior on shownWidth { enabled: !root.dragShown; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-    Behavior on shownHeight { enabled: !root.dragShown; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+    property real shownX: root.dragShown ? root.regionX : root.targetedRegionValid() ? root.targetedRegionX : 0
+    property real shownY: root.dragShown ? root.regionY : root.targetedRegionValid() ? root.targetedRegionY : 0
+    property real shownWidth: root.dragShown ? root.regionWidth : root.targetedRegionValid() ? root.targetedRegionWidth : root.width
+    property real shownHeight: root.dragShown ? root.regionHeight : root.targetedRegionValid() ? root.targetedRegionHeight : root.height
+    // No glide until the first target is known: it opens straight on the
+    // window under the pointer instead of growing out of a corner.
+    property bool settled: false
+    component Glide: NumberAnimation {
+        duration: Appearance.animationCurves.expressiveDefaultSpatialDuration
+        easing.type: Easing.BezierSpline
+        easing.bezierCurve: Appearance.animationCurves.expressiveDefaultSpatial
+    }
+    Behavior on shownX { enabled: root.settled && !root.dragShown; Glide {} }
+    Behavior on shownY { enabled: root.settled && !root.dragShown; Glide {} }
+    Behavior on shownWidth { enabled: root.settled && !root.dragShown; Glide {} }
+    Behavior on shownHeight { enabled: root.settled && !root.dragShown; Glide {} }
+
+    // Where the pointer is when the tool opens (no motion event has come yet).
+    Process {
+        running: true
+        command: ["hyprctl", "cursorpos", "-j"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const pos = JSON.parse(text);
+                    root.updateTargetedRegion(pos.x - root.monitorOffsetX, pos.y - root.monitorOffsetY);
+                } catch (e) {}
+                Qt.callLater(() => root.settled = true);
+            }
+        }
+    }
 
     property real regionWidth: Math.abs(draggingX - dragStartX)
     property real regionHeight: Math.abs(draggingY - dragStartY)
@@ -427,16 +451,6 @@ PanelWindow {
                 overlayColor: root.overlayColor
                 points: root.points
             }
-        }
-
-        // The thing to the bottom-right with an icon
-        CursorGuide {
-            z: 9999
-            visible: root.phase === RegionSelection.Phase.Select
-            x: root.dragging ? root.regionX + root.regionWidth : mouseArea.mouseX
-            y: root.dragging ? root.regionY + root.regionHeight : mouseArea.mouseY
-            action: root.action
-            selectionMode: root.selectionMode
         }
 
         // (Ashura: no outline on every window; the cut-out wraps the one
