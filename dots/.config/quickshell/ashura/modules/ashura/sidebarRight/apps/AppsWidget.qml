@@ -23,7 +23,8 @@ Item {
     StyledText {
         anchors.centerIn: parent
         visible: AppUsage.apps.length === 0
-        text: Translation.tr("No apps with windows")
+        // Before the first poll lands there is nothing to say yet.
+        text: AppUsage.loaded ? Translation.tr("No apps with windows") : Translation.tr("Reading apps…")
         color: Appearance.colors.colSubtext
     }
 
@@ -32,7 +33,9 @@ Item {
         anchors.fill: parent
         clip: true
         spacing: 6
-        model: AppUsage.apps
+        // Keyed by pid: a poll updates the rows in place instead of building
+        // them again (which reloaded every icon and restarted every bar).
+        model: ScriptModel { values: AppUsage.apps; objectProp: "pid" }
         boundsBehavior: Flickable.StopAtBounds
 
         delegate: Item {

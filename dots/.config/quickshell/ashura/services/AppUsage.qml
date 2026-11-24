@@ -20,6 +20,7 @@ Singleton {
     property int interval: 3000
     // Each: { pid, name, cpu, memMb, windows, addresses }
     property var apps: []
+    property bool loaded: false       // the first poll has landed
     property var prevCpu: ({})       // pid -> cpu seconds at the last poll
     property real prevTime: 0
     property var children: ({})      // ppid -> [pid], from the last poll
@@ -123,6 +124,7 @@ Singleton {
                 }
                 out.sort((a, b) => b.memMb - a.memMb);
                 root.apps = out;
+                root.loaded = true;
             }
         }
     }
