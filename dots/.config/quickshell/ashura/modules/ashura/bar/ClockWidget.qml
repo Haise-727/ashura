@@ -35,6 +35,11 @@ Item {
             color: Appearance.colors.colOnLayer1
             text: DateTime.longDate
         }
+
+        // Agenda items due soon (DeadlinePips); hover for a countdown.
+        DeadlinePips {
+            Layout.alignment: Qt.AlignVCenter
+        }
     }
 
     // Ashura: no clock popup; hovering the clock opens the dashboard instead
