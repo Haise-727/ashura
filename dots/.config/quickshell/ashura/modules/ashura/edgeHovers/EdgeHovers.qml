@@ -30,12 +30,23 @@ Scope {
     readonly property int depth: 3              // px of edge that reacts
     readonly property int graceMs: 300          // time to move from edge to panel
 
+    // Every edge panel follows one rule: only the edge strip opens it. Hover
+    // on the panel itself only keeps an OPEN panel open, and a closing panel
+    // takes no input. Otherwise a pointer crossing a panel while it slid
+    // away brought it straight back and blocked what was beneath it.
+
     // ---- right: sliders ----
     property bool rightEdgeHovered: false
     property bool slidersHovered: false
+    property bool slidersOpen: false
     // Each edge can be switched off in Settings, Edges.
     readonly property bool slidersShown: AshuraSettings.edgeRight && !GlobalStates.sidebarRightOpen && !GlobalStates.screenLocked
-        && (rightEdgeHovered || slidersHovered || rightGrace.running)
+        && root.slidersOpen
+    function updateSliders() {
+        if (root.rightEdgeHovered) root.slidersOpen = true;
+        else if (!root.slidersHovered && !rightGrace.running) root.slidersOpen = false;
+    }
+    onSlidersOpenChanged: if (!slidersOpen) root.slidersHovered = false
 
     // ---- left: the icon rail ----
     property bool leftEdgeHovered: false
@@ -46,19 +57,26 @@ Scope {
     Timer { id: railGrace; interval: root.graceMs; onTriggered: if (!root.leftEdgeHovered && !root.railHovered) root.railOpen = false }
     onLeftEdgeHoveredChanged: if (!leftEdgeHovered) railGrace.restart()
     onRailHoveredChanged: if (!railHovered) railGrace.restart()
+    onRailOpenChanged: if (!railOpen) root.railHovered = false
 
     // ---- bottom: music ----
     property bool bottomEdgeHovered: false
     property bool musicHovered: false
+    property bool musicOpen: false
     readonly property bool musicShown: AshuraSettings.edgeBottom && !GlobalStates.overviewOpen && !GlobalStates.screenLocked
-        && (bottomEdgeHovered || musicHovered || bottomGrace.running)
+        && root.musicOpen
+    function updateMusic() {
+        if (root.bottomEdgeHovered) root.musicOpen = true;
+        else if (!root.musicHovered && !bottomGrace.running) root.musicOpen = false;
+    }
+    onMusicOpenChanged: if (!musicOpen) root.musicHovered = false
 
-    Timer { id: rightGrace; interval: root.graceMs }
-    Timer { id: bottomGrace; interval: 150 }    // short: it closes almost at once
-    onRightEdgeHoveredChanged: if (!rightEdgeHovered) rightGrace.restart()
-    onSlidersHoveredChanged: if (!slidersHovered) rightGrace.restart()
-    onBottomEdgeHoveredChanged: if (!bottomEdgeHovered) bottomGrace.restart()
-    onMusicHoveredChanged: if (!musicHovered) bottomGrace.restart()
+    Timer { id: rightGrace; interval: root.graceMs; onTriggered: root.updateSliders() }
+    Timer { id: bottomGrace; interval: 150; onTriggered: root.updateMusic() }    // short: it closes almost at once
+    onRightEdgeHoveredChanged: { if (!rightEdgeHovered) rightGrace.restart(); root.updateSliders(); }
+    onSlidersHoveredChanged: { if (!slidersHovered) rightGrace.restart(); root.updateSliders(); }
+    onBottomEdgeHoveredChanged: { if (!bottomEdgeHovered) bottomGrace.restart(); root.updateMusic(); }
+    onMusicHoveredChanged: { if (!musicHovered) bottomGrace.restart(); root.updateMusic(); }
 
     // On-screen display: a ripple out of the right edge when a value changes
     // (EdgeRipple). Not during the first seconds, while devices report their
@@ -88,6 +106,8 @@ Scope {
     function openSidebar(side) {
         root.rightEdgeHovered = false;
         root.slidersHovered = false;
+        rightGrace.stop();
+        root.slidersOpen = false;
         rippleTimer.stop();
         root.railOpen = false;
         GlobalStates.sidebarLeftOpen = side === "left";
@@ -160,6 +180,8 @@ Scope {
                 implicitWidth: slidersCard.implicitWidth
                 implicitHeight: slidersCard.implicitHeight
                 visible: root.slidersShown || slidersCard.slide < 1
+                mask: Region { item: root.slidersShown ? slidersHoverRoot : noSliderInput }
+                Item { id: noSliderInput; width: 0; height: 0 }
 
                 // Hover is checked on the whole window, flush with the screen
                 // edge: a margin between the edge and the card made the panel
@@ -171,7 +193,7 @@ Scope {
                 Item {
                     id: slidersHoverRoot
                     anchors.fill: parent
-                    HoverHandler { onHoveredChanged: root.slidersHovered = hovered }
+                    HoverHandler { onHoveredChanged: root.slidersHovered = hovered && root.slidersOpen }
                 }
 
                 // The arc dial (panel style R2a), sliding out of the edge.
@@ -245,13 +267,13 @@ Scope {
                 // Always mapped, empty and click-through while closed (as the
                 // music bar), so opening never waits for a new window.
                 visible: true
-                mask: Region { item: (root.railShown || railSlide.slide < 1) ? railHoverRoot : noRailInput }
+                mask: Region { item: root.railShown ? railHoverRoot : noRailInput }
                 Item { id: noRailInput; width: 0; height: 0 }
 
                 Item {
                     id: railHoverRoot
                     anchors.fill: parent
-                    HoverHandler { onHoveredChanged: root.railHovered = hovered }
+                    HoverHandler { onHoveredChanged: root.railHovered = hovered && root.railOpen }
 
                     Item {
                         id: railSlide
@@ -346,13 +368,13 @@ Scope {
                 implicitWidth: musicBar.implicitWidth + fillet * 2
                 implicitHeight: 116
                 visible: true
-                mask: Region { item: (root.musicShown || musicSlide.slide < 1) ? musicHoverRoot : noMusicInput }
+                mask: Region { item: root.musicShown ? musicHoverRoot : noMusicInput }
                 Item { id: noMusicInput; width: 0; height: 0 }
 
                 Item {
                     id: musicHoverRoot
                     anchors.fill: parent
-                    HoverHandler { onHoveredChanged: root.musicHovered = hovered }
+                    HoverHandler { onHoveredChanged: root.musicHovered = hovered && root.musicOpen }
 
                     Item {
                         id: musicSlide
