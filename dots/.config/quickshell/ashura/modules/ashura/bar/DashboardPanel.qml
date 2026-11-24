@@ -156,12 +156,32 @@ HoverPanel {
         rowSpacing: 10
         columnSpacing: 10
 
-        // The 12 hour ring, the full height on the left.
+        // The 12 hour ring, the full height on the left, with the next agenda
+        // item under it and the gif at the bottom, level with the bongo cat.
         Card {
+            id: clockCard
             Layout.row: 0; Layout.column: 0; Layout.rowSpan: 2
             Layout.preferredWidth: 250
             Layout.fillHeight: true
-            DayRing { anchors.centerIn: parent }
+            Item {
+                id: ringArea
+                anchors { left: parent.left; right: parent.right; top: parent.top; bottom: gif.top }
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 10
+                    DayRing { anchors.horizontalCenter: parent.horizontalCenter }
+                    NextEvent { anchors.horizontalCenter: parent.horizontalCenter; width: clockCard.width - 24 }
+                }
+            }
+            AnimatedImage {
+                id: gif
+                anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 14 }
+                width: 180; height: 116
+                fillMode: Image.PreserveAspectFit
+                // Settings, Desktop: any gif; empty means the bundled one.
+                source: AshuraSettings.dashboardGif !== "" ? `file://${AshuraSettings.dashboardGif}` : Quickshell.shellPath("assets/ashura/dashboard.gif")
+                playing: root.shown && root.tab === 0
+            }
         }
 
         // You, with your picture beside you (about 28% of the tab's height).
@@ -222,15 +242,6 @@ HoverPanel {
                     }
                 }
             }
-            // The gif sits small in the top right corner, clear of the name.
-            AnimatedImage {
-                anchors { right: parent.right; top: parent.top; margins: 6 }
-                width: 64; height: 64
-                fillMode: Image.PreserveAspectFit
-                // Settings, Desktop: any gif; empty means the bundled one.
-                source: AshuraSettings.dashboardGif !== "" ? `file://${AshuraSettings.dashboardGif}` : Quickshell.shellPath("assets/ashura/dashboard.gif")
-                playing: root.shown && root.tab === 0
-            }
         }
 
         // The month with the agenda inside it (AgendaCalendar).
@@ -248,6 +259,56 @@ HoverPanel {
             Layout.preferredWidth: 220
             Layout.fillHeight: true
             MiniPlayer { anchors.fill: parent; anchors.margins: 14 }
+        }
+    }
+
+    // The next open agenda item and how long until it is due (or how long
+    // overdue), as one line under the ring. Quiet when nothing is coming.
+    component NextEvent: Rectangle {
+        id: ne
+        property date now: new Date()
+        Timer { interval: 30000; running: root.shown; repeat: true; triggeredOnStart: true; onTriggered: ne.now = new Date() }
+        readonly property var next: {
+            let best = null;
+            for (const it of Agenda.items) {
+                if (it.done) continue;
+                const due = new Date(`${it.date}T${it.time || "23:59"}:00`);
+                // Overdue by more than a day drops out; the calendar still shows it.
+                if (due.getTime() < ne.now.getTime() - 86400000) continue;
+                if (!best || due < best.due) best = { title: it.title, due: due };
+            }
+            return best;
+        }
+        readonly property int mins: ne.next ? Math.round((ne.next.due.getTime() - ne.now.getTime()) / 60000) : 0
+        function span(m) {
+            const a = Math.abs(m), d = Math.floor(a / 1440), h = Math.floor((a % 1440) / 60), mm = a % 60;
+            return d > 0 ? `${d} d ${h} h` : h > 0 ? `${h} h ${mm} min` : `${mm} min`;
+        }
+        implicitHeight: 34
+        radius: 17
+        color: ne.next && ne.mins < 0 ? Appearance.colors.colErrorContainer : Appearance.colors.colLayer1
+        RowLayout {
+            anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
+            spacing: 6
+            MaterialSymbol {
+                text: !ne.next ? "event_available" : ne.mins < 0 ? "warning" : "event_upcoming"
+                iconSize: Appearance.font.pixelSize.normal
+                color: ne.next && ne.mins < 0 ? Appearance.colors.colOnErrorContainer : Appearance.colors.colPrimary
+            }
+            StyledText {
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+                text: ne.next ? ne.next.title : Translation.tr("Nothing coming up")
+                font.pixelSize: Appearance.font.pixelSize.smaller
+                color: ne.next && ne.mins < 0 ? Appearance.colors.colOnErrorContainer : Appearance.colors.colOnLayer1
+            }
+            StyledText {
+                visible: ne.next !== null
+                text: ne.mins < 0 ? Translation.tr("%1 late").arg(ne.span(ne.mins)) : Translation.tr("in %1").arg(ne.span(ne.mins))
+                font.pixelSize: Appearance.font.pixelSize.smaller
+                font.family: Appearance.font.family.numbers
+                color: ne.next && ne.mins < 0 ? Appearance.colors.colOnErrorContainer : Appearance.colors.colSubtext
+            }
         }
     }
 
@@ -405,6 +466,8 @@ HoverPanel {
                 }
             }
         }
+        // Pushes the cat to the bottom, level with the gif in the clock card.
+        Item { Layout.fillHeight: true }
         // The bongo cat (caelestia's), drumming only while music plays.
         AnimatedImage {
             visible: AshuraSettings.dashboardBongoCat
