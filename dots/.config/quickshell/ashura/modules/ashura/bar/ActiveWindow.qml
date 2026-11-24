@@ -12,6 +12,7 @@ import Quickshell.Hyprland
 // focused window's title (or "Search" on an empty workspace) next to a search
 // icon, and a click opens search, so search is reachable with the mouse.
 // The small line above says which app, or "cockpit · <repo>" inside the cockpit.
+// The title types itself in on a focus change (TypewriterText).
 MouseArea {
     id: root
     readonly property HyprlandMonitor monitor: Hyprland.monitorFor(root.QsWindow.window?.screen)
@@ -65,14 +66,15 @@ MouseArea {
                         ? root.activeWindow?.appId : (root.biggestWindow?.class) ?? Translation.tr("Desktop")
             }
 
-            StyledText {
+            // The title types itself in when focus changes (TypewriterText).
+            TypewriterText {
                 Layout.fillWidth: true
                 font.pixelSize: Appearance.font.pixelSize.small
                 color: Appearance.colors.colOnLayer0
                 elide: Text.ElideRight
-                text: root.focusingThisMonitor && root.activeWindow?.activated && root.biggestWindow
+                target: (root.focusingThisMonitor && root.activeWindow?.activated && root.biggestWindow
                     ? root.activeWindow?.title
-                    : (root.biggestWindow?.title) ?? Translation.tr("Search")
+                    : (root.biggestWindow?.title) ?? Translation.tr("Search")) ?? ""
             }
         }
     }
