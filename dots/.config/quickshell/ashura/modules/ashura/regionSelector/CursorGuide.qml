@@ -11,9 +11,9 @@ Item {
     property string description: switch (root.action) {
     case RegionSelection.SnipAction.Copy:
     case RegionSelection.SnipAction.Edit:
-        return Translation.tr("Copy region (LMB) or annotate (RMB)");
+        return Translation.tr("Click a window, or drag an area");
     case RegionSelection.SnipAction.Search:
-        return Translation.tr("Search with Google Lens");
+        return Translation.tr("Click a window, or drag an area, for Lens");
     case RegionSelection.SnipAction.CharRecognition:
         return Translation.tr("Recognize text");
     case RegionSelection.SnipAction.Record:

@@ -97,6 +97,11 @@ PanelWindow {
         if (!topLayers) return [];
         const nonBarTopLayers = topLayers
             .filter(layer => !(layer.namespace.includes(":bar") || layer.namespace.includes(":verticalBar") || layer.namespace.includes(":dock")))
+            // Ashura: skip invisible helpers (edge strips, 1 px probes) and
+            // anything nearly screen-sized (the wave border): as targets
+            // they would swallow every window under them.
+            .filter(layer => layer.w >= 16 && layer.h >= 16
+                && layer.w * layer.h < root.screen.width * root.screen.height * 0.6)
             .map(layer => {
             return {
                 at: [layer.x, layer.y],
@@ -179,6 +184,20 @@ PanelWindow {
         root.targetedRegionHeight = 0;
     }
 
+    // What the overlay shows (Ashura): while dragging, the dragged area; before
+    // that, the window (or layer, or image) under the pointer, so the clear
+    // cut-out wraps it and glides from one to the next. Nothing under the
+    // pointer: a point at the pointer (the whole screen stays dim).
+    readonly property bool dragShown: root.dragging && root.draggedAway
+    property real shownX: root.dragShown ? root.regionX : root.targetedRegionValid() ? root.targetedRegionX : mouseArea.mouseX
+    property real shownY: root.dragShown ? root.regionY : root.targetedRegionValid() ? root.targetedRegionY : mouseArea.mouseY
+    property real shownWidth: root.dragShown ? root.regionWidth : root.targetedRegionValid() ? root.targetedRegionWidth : 0
+    property real shownHeight: root.dragShown ? root.regionHeight : root.targetedRegionValid() ? root.targetedRegionHeight : 0
+    Behavior on shownX { enabled: !root.dragShown; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+    Behavior on shownY { enabled: !root.dragShown; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+    Behavior on shownWidth { enabled: !root.dragShown; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+    Behavior on shownHeight { enabled: !root.dragShown; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+
     property real regionWidth: Math.abs(draggingX - dragStartX)
     property real regionHeight: Math.abs(draggingY - dragStartY)
     property real regionX: Math.min(dragStartX, draggingX)
@@ -228,10 +247,9 @@ PanelWindow {
         stdout: StdioCollector {
             id: imageDimensionCollector
             onStreamFinished: {
-                imageRegions = RegionFunctions.filterImageRegions(
-                    JSON.parse(imageDimensionCollector.text),
-                    root.windowRegions
-                );
+                let found = [];
+                try { found = JSON.parse(imageDimensionCollector.text); } catch (e) { return; }
+                imageRegions = RegionFunctions.filterImageRegions(found, root.windowRegions);
             }
         }
     }
@@ -263,6 +281,7 @@ PanelWindow {
         if (root.regionWidth <= 0 || root.regionHeight <= 0) {
             console.warn("[Region Selector] Invalid region size, skipping snip.");
             root.dismiss();
+            return;
         }
 
         // Clamp region to screen bounds
@@ -271,11 +290,6 @@ PanelWindow {
         root.regionWidth = Math.max(0, Math.min(root.regionWidth, root.screen.width - root.regionX));
         root.regionHeight = Math.max(0, Math.min(root.regionHeight, root.screen.height - root.regionY));
 
-        // Adjust action
-        if (root.action === RegionSelection.SnipAction.Copy || root.action === RegionSelection.SnipAction.Edit) {
-            root.action = root.mouseButton === Qt.RightButton ? RegionSelection.SnipAction.Edit : RegionSelection.SnipAction.Copy;
-        }
-        
         const screenshotDir = Config.options.screenSnip.savePath !== "" ? //
             Config.options.screenSnip.savePath : "";
         var screenshotAction = root.getScreenshotAction();
@@ -305,10 +319,22 @@ PanelWindow {
         }
     }
 
-    ScreencopyView { // For freezing
+    // Esc closes from anywhere in the window, even after a toolbar button
+    // took the focus.
+    Shortcut {
+        sequence: "Escape"
+        onActivated: root.dismiss()
+    }
+
+    // The frozen screen: the grim shot taken before the overlay showed
+    // (Ashura). A live:false ScreencopyView grabbed its frame after the
+    // overlay's first frame, so the cursor bubble got baked into it.
+    Image {
         anchors.fill: parent
-        live: false
-        captureSource: root.screen
+        source: root.preparationDone ? `file://${root.screenshotPath}` : ""
+        cache: false
+        asynchronous: false
+        smooth: true
         visible: root.phase === RegionSelection.Phase.Select
 
         focus: root.visible
@@ -323,7 +349,8 @@ PanelWindow {
         id: mouseArea
         anchors.fill: parent
         cursorShape: Qt.CrossCursor
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        // Left only: a right click does nothing.
+        acceptedButtons: Qt.LeftButton
         hoverEnabled: true
 
         // Controls
@@ -337,9 +364,15 @@ PanelWindow {
         }
         onReleased: (mouse) => {
             // Detect if it was a click -> Try to select targeted region
+            // (on nothing: the whole screen)
             if (root.draggingX === root.dragStartX && root.draggingY === root.dragStartY) {
                 if (root.targetedRegionValid()) {
                     root.setRegionToTargeted();
+                } else {
+                    root.regionX = 0;
+                    root.regionY = 0;
+                    root.regionWidth = root.screen.width;
+                    root.regionHeight = root.screen.height;
                 }
             }
             // Circle dragging?
@@ -372,13 +405,14 @@ PanelWindow {
             anchors.fill: parent
             active: root.selectionMode === RegionSelection.SelectionMode.RectCorners
             sourceComponent: RectCornersSelectionDetails {
-                regionX: root.regionX
-                regionY: root.regionY
-                regionWidth: root.regionWidth
-                regionHeight: root.regionHeight
-                mouseX: mouseArea.mouseX
-                mouseY: mouseArea.mouseY
-                color: root.selectionBorderColor
+                regionX: root.phase === RegionSelection.Phase.Post ? root.regionX : root.shownX
+                regionY: root.phase === RegionSelection.Phase.Post ? root.regionY : root.shownY
+                regionWidth: root.phase === RegionSelection.Phase.Post ? root.regionWidth : root.shownWidth
+                regionHeight: root.phase === RegionSelection.Phase.Post ? root.regionHeight : root.shownHeight
+                showSize: root.dragShown
+                // A wrapped window keeps its own rounded corners.
+                cornerRadius: root.dragShown ? 4 : Appearance.rounding.windowRounding
+                color: Appearance.colors.colPrimary
                 overlayColor: root.overlayColor
                 breathingBorderOnly: root.phase === RegionSelection.Phase.Post
             }
@@ -405,92 +439,8 @@ PanelWindow {
             selectionMode: root.selectionMode
         }
 
-        // Window regions
-        Repeater {
-            model: ScriptModel {
-                values: {
-                    if (root.phase === RegionSelection.Phase.Select && root.enableWindowRegions) {
-                        return root.windowRegions
-                    } else {
-                        return []
-                    }
-                }
-            }
-            delegate: TargetRegion {
-                z: 2
-                required property var modelData
-                clientDimensions: modelData
-                showIcon: true
-                targeted: !root.draggedAway && //
-                    (root.targetedRegionX === modelData.at[0]  //
-                    && root.targetedRegionY === modelData.at[1] //
-                    && root.targetedRegionWidth === modelData.size[0] //
-                    && root.targetedRegionHeight === modelData.size[1])
-
-                opacity: root.draggedAway ? 0 : root.targetRegionOpacity
-                borderColor: root.windowBorderColor
-                fillColor: targeted ? root.windowFillColor : "transparent"
-                text: `${modelData.class}`
-                radius: Appearance.rounding.windowRounding
-            }
-        }
-
-        // Layer regions
-        Repeater {
-            model: ScriptModel {
-                values: {
-                    if (root.phase === RegionSelection.Phase.Select && root.enableLayerRegions) {
-                        return root.layerRegions
-                    } else {
-                        return []
-                    }
-                }
-            }
-            delegate: TargetRegion {
-                z: 3
-                required property var modelData
-                clientDimensions: modelData
-                targeted: !root.draggedAway &&
-                    (root.targetedRegionX === modelData.at[0] 
-                    && root.targetedRegionY === modelData.at[1]
-                    && root.targetedRegionWidth === modelData.size[0]
-                    && root.targetedRegionHeight === modelData.size[1])
-
-                opacity: root.draggedAway ? 0 : root.targetRegionOpacity
-                borderColor: root.windowBorderColor
-                fillColor: targeted ? root.windowFillColor : "transparent"
-                text: `${modelData.namespace}`
-                radius: Appearance.rounding.windowRounding
-            }
-        }
-
-        // Content regions
-        Repeater {
-            model: ScriptModel {
-                values: {
-                    if (root.phase === RegionSelection.Phase.Select && root.enableContentRegions) {
-                        return root.imageRegions
-                    } else {
-                        return []
-                    }
-                }
-            }
-            delegate: TargetRegion {
-                z: 4
-                required property var modelData
-                clientDimensions: modelData
-                targeted: !root.draggedAway &&
-                    (root.targetedRegionX === modelData.at[0] 
-                    && root.targetedRegionY === modelData.at[1]
-                    && root.targetedRegionWidth === modelData.size[0]
-                    && root.targetedRegionHeight === modelData.size[1])
-
-                opacity: root.draggedAway ? 0 : root.contentRegionOpacity
-                borderColor: root.imageBorderColor
-                fillColor: targeted ? root.imageFillColor : "transparent"
-                text: Translation.tr("Content region")
-            }
-        }
+        // (Ashura: no outline on every window; the cut-out wraps the one
+        // under the pointer instead.)
 
         // Controls
         Row {
