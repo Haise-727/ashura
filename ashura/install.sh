@@ -326,14 +326,17 @@ if ! command -v devpit >/dev/null 2>&1 && [ ! -e "$TARGET/.local/bin/devpit" ]; 
     fi
 fi
 
-# ----------------------------------------------------------------- 7. agenda CLI
-# `ashura-agenda` edits the dashboard calendar's items from a terminal.
-if [ ! -e "$TARGET/.local/bin/ashura-agenda" ]; then
-    say "ashura-agenda on PATH"
-    [ "$DRY" = 1 ] || printf 'rm -f "$T/.local/bin/ashura-agenda"\n' >> "$ROLLBACK"
-    run mkdir -p "$TARGET/.local/bin"
-    run ln -s "$TARGET/.config/quickshell/ashura/scripts/ashura/ashura-agenda" "$TARGET/.local/bin/ashura-agenda"
-fi
+# ----------------------------------------------------------------- 7. small CLIs
+# `ashura-agenda` edits the dashboard calendar's items from a terminal;
+# `ashura-spotify login` signs the music bar in to Spotify once.
+for cli in ashura-agenda ashura-spotify; do
+    if [ ! -e "$TARGET/.local/bin/$cli" ]; then
+        say "$cli on PATH"
+        [ "$DRY" = 1 ] || printf 'rm -f "$T/.local/bin/%s"\n' "$cli" >> "$ROLLBACK"
+        run mkdir -p "$TARGET/.local/bin"
+        run ln -s "$TARGET/.config/quickshell/ashura/scripts/ashura/$cli" "$TARGET/.local/bin/$cli"
+    fi
+done
 
 # ----------------------------------------------------------------- done
 if [ "$DRY" = 0 ]; then
