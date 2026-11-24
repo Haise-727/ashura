@@ -875,7 +875,8 @@ HoverPanel {
             Layout.fillHeight: true
             clip: true
             spacing: 8
-            model: Cockpit.cockpits
+            // Keyed by id: a refresh updates rows in place, no rebuild flash.
+            model: ScriptModel { values: Cockpit.cockpits; objectProp: "id" }
             delegate: Item {
                 id: row
                 required property var modelData
@@ -1009,7 +1010,7 @@ HoverPanel {
                 }
             }
             PagePlaceholder {
-                shown: Cockpit.cockpits.length === 0
+                shown: Cockpit.loaded && Cockpit.cockpits.length === 0
                 icon: "rocket_launch"
                 title: Translation.tr("No cockpits yet")
                 description: Translation.tr("Add a repo with the button above")

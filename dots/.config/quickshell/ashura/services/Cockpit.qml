@@ -31,6 +31,7 @@ Singleton {
 
     // From devpit, refreshed on demand
     property var cockpits: []           // devpit cockpit list --json
+    property bool loaded: false         // the list has been read once
     property var candidates: []         // devpit cockpit candidates --json
     property string lastError: ""
 
@@ -56,6 +57,9 @@ Singleton {
 
     // Coalesced: many window events in a row cost one devpit run, not one each.
     function refresh() { refreshTimer.restart(); }
+    // Read the list once soon after start, so the dashboard's Cockpits tab
+    // has rows the first time it opens instead of "No cockpits yet".
+    Timer { interval: 4000; running: true; onTriggered: root.refresh() }
 
     // ------------------------------------------------------------ job queue
     // devpit calls that change something run one at a time, in order. A single
@@ -174,6 +178,7 @@ Singleton {
             onStreamFinished: {
                 const d = root.parse(text, "cockpit list");
                 if (d) root.cockpits = d.cockpits;
+                root.loaded = true;
             }
         }
     }
