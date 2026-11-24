@@ -326,6 +326,15 @@ if ! command -v devpit >/dev/null 2>&1 && [ ! -e "$TARGET/.local/bin/devpit" ]; 
     fi
 fi
 
+# ----------------------------------------------------------------- 7. agenda CLI
+# `ashura-agenda` edits the dashboard calendar's items from a terminal.
+if [ ! -e "$TARGET/.local/bin/ashura-agenda" ]; then
+    say "ashura-agenda on PATH"
+    [ "$DRY" = 1 ] || printf 'rm -f "$T/.local/bin/ashura-agenda"\n' >> "$ROLLBACK"
+    run mkdir -p "$TARGET/.local/bin"
+    run ln -s "$TARGET/.config/quickshell/ashura/scripts/ashura/ashura-agenda" "$TARGET/.local/bin/ashura-agenda"
+fi
+
 # ----------------------------------------------------------------- done
 if [ "$DRY" = 0 ]; then
     # Folders the install created, removed only if nothing else ended up in them.

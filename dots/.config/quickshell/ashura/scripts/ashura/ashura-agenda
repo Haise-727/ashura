@@ -1,0 +1,297 @@
+#!/usr/bin/env python3
+"""ashura-agenda: the Ashura agenda from a terminal.
+
+Reads and writes ~/.config/ashura/agenda.json, the file the dashboard
+calendar watches (services/Agenda.qml), so a change shows there at once.
+
+  ashura-agenda add "Submit DBMS DA" fri 17:00
+  ashura-agenda add "Buy milk"                 (today, no time)
+  ashura-agenda list                           open items, overdue first
+  ashura-agenda list --all --json
+  ashura-agenda done <id>      ashura-agenda undo <id>
+  ashura-agenda rm <id>
+  ashura-agenda edit <id> --title "..." --date tomorrow --time 9:30
+  ashura-agenda edit <id> --no-time
+
+Dates: today, tomorrow (tmr), yesterday, a weekday (mon..sun, the next one,
+today counts), "next fri" (a week later), +3 (days from today), a day of the
+month (25: this month, or next month once it has passed), YYYY-MM-DD, or
+DD-MM / DD/MM (this year). Times: 17:00, 9:30, 5pm, 5:30pm.
+An id can be shortened to any unique start of it.
+"""
+import argparse
+import datetime as dt
+import json
+import os
+import random
+import re
+import string
+import sys
+import tempfile
+import time
+
+PATH = os.path.join(os.path.expanduser("~"), ".config", "ashura", "agenda.json")
+DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+FULL = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+
+def die(msg):
+    print(f"ashura-agenda: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def load():
+    try:
+        with open(PATH) as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return {"items": []}
+    except json.JSONDecodeError as e:
+        die(f"{PATH} is not valid JSON ({e}); not touching it")
+    data.setdefault("items", [])
+    return data
+
+
+def save(data):
+    # Write a temporary file next to it and rename it over the old one, so
+    # the shell never reads half a file.
+    os.makedirs(os.path.dirname(PATH), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".agenda.", dir=os.path.dirname(PATH))
+    with os.fdopen(fd, "w") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+        f.write("\n")
+    os.replace(tmp, PATH)
+
+
+def new_id():
+    # Same shape as the shell's ids: base36 time plus four random letters.
+    n, s = int(time.time() * 1000), ""
+    while n:
+        n, r = divmod(n, 36)
+        s = "0123456789abcdefghijklmnopqrstuvwxyz"[r] + s
+    return s + "".join(random.choice(string.ascii_lowercase + string.digits) for _ in range(4))
+
+
+def parse_date(words, today=None):
+    """Words -> YYYY-MM-DD. Raises ValueError."""
+    today = today or dt.date.today()
+    w = " ".join(words).strip().lower()
+    if w in ("", "today", "tod"):
+        return today.isoformat()
+    if w in ("tomorrow", "tmr", "tmrw", "tom"):
+        return (today + dt.timedelta(days=1)).isoformat()
+    if w == "yesterday":
+        return (today - dt.timedelta(days=1)).isoformat()
+    m = re.fullmatch(r"\+(\d+)d?", w)
+    if m:
+        return (today + dt.timedelta(days=int(m.group(1)))).isoformat()
+    m = re.fullmatch(r"(next\s+)?([a-z]+)", w)
+    if m and m.group(2)[:3] in DAYS and FULL[DAYS.index(m.group(2)[:3])].startswith(m.group(2)):
+        want = DAYS.index(m.group(2)[:3])
+        ahead = (want - today.weekday()) % 7
+        if m.group(1):
+            ahead += 7
+        return (today + dt.timedelta(days=ahead)).isoformat()
+    m = re.fullmatch(r"(\d{1,2})", w)
+    if m:   # a day of the month: this month, or next month once it has passed
+        d = dt.date(today.year, today.month, 1)
+        day = int(m.group(1))
+        for _ in range(2):
+            try:
+                cand = d.replace(day=day)
+                if cand >= today:
+                    return cand.isoformat()
+            except ValueError:
+                pass
+            d = (d + dt.timedelta(days=32)).replace(day=1)
+        raise ValueError(f"not a date: {w!r}")
+    m = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", w)
+    if m:
+        return dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat()
+    m = re.fullmatch(r"(\d{1,2})[-/](\d{1,2})", w)
+    if m:
+        return dt.date(today.year, int(m.group(2)), int(m.group(1))).isoformat()
+    raise ValueError(f"not a date: {' '.join(words)!r}")
+
+
+def parse_time(word):
+    """'17:00', '9:30', '5pm', '5:30pm' -> 'HH:MM'. Raises ValueError."""
+    w = word.strip().lower()
+    m = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", w)
+    if not m or (m.group(2) is None and m.group(3) is None):
+        raise ValueError(f"not a time: {word!r}")
+    h, mi = int(m.group(1)), int(m.group(2) or 0)
+    if m.group(3):
+        if not 1 <= h <= 12:
+            raise ValueError(f"not a time: {word!r}")
+        h = h % 12 + (12 if m.group(3) == "pm" else 0)
+    if h > 23 or mi > 59:
+        raise ValueError(f"not a time: {word!r}")
+    return f"{h:02d}:{mi:02d}"
+
+
+def looks_like_time(word):
+    try:
+        parse_time(word)
+        return True
+    except ValueError:
+        return False
+
+
+def find(data, prefix):
+    hits = [it for it in data["items"] if it["id"].startswith(prefix)]
+    if not hits:
+        die(f"no item with id {prefix!r}")
+    if len(hits) > 1:
+        die(f"id {prefix!r} matches {len(hits)} items; give more of it")
+    return hits[0]
+
+
+def sort_key(it):
+    return (it["date"], it.get("time") or "99:99")
+
+
+def short_ids(items):
+    """id -> its shortest unique start (at least 4 characters)."""
+    ids = [it["id"] for it in items]
+    out = {}
+    for i in ids:
+        n = min(4, len(i))
+        while n < len(i) and any(j != i and j.startswith(i[:n]) for j in ids):
+            n += 1
+        out[i] = i[:n]
+    return out
+
+
+def show(it, today, short=None):
+    mark = "x" if it.get("done") else " "
+    d = dt.date.fromisoformat(it["date"])
+    rel = (d - today).days
+    when = {0: "today", 1: "tomorrow", -1: "yesterday"}.get(rel, d.strftime("%a %d %b"))
+    if not it.get("done") and rel < 0:
+        when += " (overdue)"
+    t = f" {it['time']}" if it.get("time") else ""
+    sid = (short or {}).get(it["id"], it["id"])
+    return f"[{mark}] {sid:<8}  {when}{t}  {it['title']}"
+
+
+def cmd_add(a):
+    words = a.words
+    if not words:
+        die('add needs a title: ashura-agenda add "title" [date] [time]')
+    title, rest = words[0], words[1:]
+    when_t = None
+    if rest and looks_like_time(rest[-1]):
+        when_t = parse_time(rest[-1])
+        rest = rest[:-1]
+    try:
+        date = parse_date(rest)
+    except ValueError as e:
+        die(str(e))
+    if a.time:
+        when_t = parse_time(a.time)
+    data = load()
+    it = {"id": new_id(), "date": date, "title": title.strip(), "done": False, "kind": a.kind}
+    if not it["title"]:
+        die("the title is empty")
+    if when_t:
+        it["time"] = when_t
+    data["items"].append(it)
+    save(data)
+    print(json.dumps(it) if a.json else f"added {show(it, dt.date.today(), short_ids(data["items"] + [it]))}")
+
+
+def cmd_list(a):
+    data = load()
+    today = dt.date.today()
+    items = sorted(data["items"], key=sort_key)
+    if not a.all:
+        items = [it for it in items if not it.get("done")]
+    if a.json:
+        print(json.dumps(items, indent=2, ensure_ascii=False))
+        return
+    if not items:
+        print("nothing open" if not a.all else "the agenda is empty")
+        return
+    short = short_ids(data["items"])
+    for it in items:
+        print(show(it, today, short))
+
+
+def set_done(a, value):
+    data = load()
+    it = find(data, a.id)
+    it["done"] = value
+    save(data)
+    print(show(it, dt.date.today(), short_ids(data["items"] + [it])))
+
+
+def cmd_rm(a):
+    data = load()
+    it = find(data, a.id)
+    data["items"] = [x for x in data["items"] if x["id"] != it["id"]]
+    save(data)
+    print(f"removed {show(it, dt.date.today(), short_ids(data["items"] + [it]))}")
+
+
+def cmd_edit(a):
+    data = load()
+    it = find(data, a.id)
+    try:
+        if a.title is not None:
+            it["title"] = a.title.strip() or die("the title is empty")
+        if a.date is not None:
+            it["date"] = parse_date(a.date.split())
+        if a.time is not None:
+            it["time"] = parse_time(a.time)
+        if a.no_time:
+            it.pop("time", None)
+        if a.kind is not None:
+            it["kind"] = a.kind
+    except ValueError as e:
+        die(str(e))
+    save(data)
+    print(show(it, dt.date.today(), short_ids(data["items"] + [it])))
+
+
+def main():
+    p = argparse.ArgumentParser(prog="ashura-agenda", description=__doc__.split("\n\n")[0],
+                                epilog=__doc__.split("\n\n", 1)[1], formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("add", help='add an item: add "title" [date] [time]')
+    s.add_argument("words", nargs="+", help="the title, then an optional date and time")
+    s.add_argument("--time", help="the time, if you would rather not put it last")
+    s.add_argument("--kind", default="deadline", help="free text, default deadline")
+    s.add_argument("--json", action="store_true", help="print the new item as JSON")
+    s.set_defaults(fn=cmd_add)
+
+    s = sub.add_parser("list", aliases=["ls"], help="open items, by date")
+    s.add_argument("--all", action="store_true", help="done items too")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(fn=cmd_list)
+
+    for name, val in (("done", True), ("undo", False)):
+        s = sub.add_parser(name, help="mark done" if val else "mark not done")
+        s.add_argument("id")
+        s.set_defaults(fn=lambda a, v=val: set_done(a, v))
+
+    s = sub.add_parser("rm", aliases=["remove"], help="remove an item")
+    s.add_argument("id")
+    s.set_defaults(fn=cmd_rm)
+
+    s = sub.add_parser("edit", help="change an item")
+    s.add_argument("id")
+    s.add_argument("--title")
+    s.add_argument("--date", help='e.g. tomorrow, fri, "next mon", 2026-12-01')
+    s.add_argument("--time")
+    s.add_argument("--no-time", action="store_true", help="drop the time")
+    s.add_argument("--kind")
+    s.set_defaults(fn=cmd_edit)
+
+    a = p.parse_args()
+    a.fn(a)
+
+
+if __name__ == "__main__":
+    main()
